@@ -46,7 +46,7 @@ cd icpc-env-greece
     ```
   * Download the 64 bit version of Ubuntu 20.04.6 Server inside the cloned directory:
     ```bash
-    curl -O https://releases.ubuntu.com/jammy/ubuntu-22.04.2-live-server-amd64.iso
+    curl -O https://mirrors.aliyun.com/oldubuntu-releases/releases/22.04/ubuntu-22.04.2-live-server-amd64.iso
     ```
   * Download the 64 bit version of eclipse into the `files/` directory:
     ```bash
