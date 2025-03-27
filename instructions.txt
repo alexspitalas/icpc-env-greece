@@ -1,0 +1,20 @@
+Server====>
+sudo ufw disable
+cd /opt
+python3 -m http.server
+
+Judge======>
+cd /opt
+./copyFilesToDesktop
+cd ~/Desktop
+nano getPasswords.sh
+Βάζεις την IP του server
+sudo ./getPasswords
+nano runJudgehosts.sh
+Βάζεις IP, port, κωδικό και το νούμερο στο hostname
+sudo ./runJudgehosts.sh
+sudo ./startAllContainers.sh
+
+Server=======>
+Ctrl+c
+sudo ufw enable
