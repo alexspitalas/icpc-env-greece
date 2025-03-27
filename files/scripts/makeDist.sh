@@ -57,6 +57,6 @@ echo "" > /etc/machine-id
 #rm -f /etc/wireguard/contest.conf
 
 # Free up space(just to make the image smaller)
-dd if=/dev/zero of=/empty bs=1M || true
+dd if=/dev/zero of=/empty bs=1M conv=fsync 2>/dev/null || true
 rm -f /empty
 sync
