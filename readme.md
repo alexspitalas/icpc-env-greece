@@ -50,7 +50,7 @@ cd icpc-env-greece
     ```
   * Download the 64 bit version of eclipse into the `files/` directory:
     ```bash
-    cd files && curl -O https://ftp2.osuosl.org/pub/eclipse/technology/epp/downloads/release/2023-06/R/eclipse-java-2023-06-R-linux-gtk-x86_64.tar.gz
+    cd files && curl -O http://www.eclipse.org/downloads/download.php?file=/technology/epp/downloads/release/2023-06/R/eclipse-java-2023-06-R-linux-gtk-x86_64.tar.gz
 
 1. Run secrets/gen-secrets.sh to create some ssh keys/other secret data. Follow this with ./fetch-secrets.sh to put them in the right place for ansible.
 2. Copy `group_vars/all.dist` to `group_vars/all` and edit it to your liking. Specifically
