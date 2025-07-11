@@ -13,6 +13,8 @@
       - curl        # debugging connection things
       - ncdu
       - jq
+      - zip
+      - unzip
       # Needed for wifi
       - wpasupplicant
       - iw
