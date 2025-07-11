@@ -136,5 +136,6 @@ qemu-system-x86_64 \
   -cdrom $OUTISO -boot order=d \
   -net nic -net user,hostfwd=tcp::5222-:22,hostfwd=tcp::5280-:80 \
   -vga qxl -vnc :0 \
-  -usbdevice tablet
+  -usbdevice tablet \
+  -cpu host
 # -global isa-fdc.driveA= is used to disable floppy drive(gets rid of a warning message)
