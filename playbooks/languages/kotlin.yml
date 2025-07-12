@@ -4,7 +4,7 @@
     pkg: unzip
     state: present
 - name: install kotlin
-  unarchive: src=files/kotlin-compiler-1.7.10.zip dest=/opt creates=/opt/kotlinc
+  unarchive: src="{{ playbook_dir }}/files/kotlin-compiler-2.2.0.zip" dest=/opt creates=/opt/kotlinc
 - name: create symlinks for kotlin
   file:
     src: /opt/kotlinc/bin/{{ binary_name }}
@@ -18,7 +18,6 @@
     - kotlinc
     - kotlinc-js
     - kotlinc-jvm
-    - kotlin-dce-js
 
 # kotlin pdf doc (single file)
 - name: create directory for kotlin docs

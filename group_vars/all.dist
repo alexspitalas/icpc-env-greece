@@ -17,6 +17,7 @@ languages:
   - cpp
   - java
   - python3
+  - kotlin
 
 devtools:
   - codeblocks
