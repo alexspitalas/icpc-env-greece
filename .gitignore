@@ -1,3 +1,5 @@
 *.iso
 configs/ssh*
 group_vars/all
+group_vars/all.yaml
+group_vars/all.yml
