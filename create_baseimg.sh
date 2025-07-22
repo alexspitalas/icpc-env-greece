@@ -3,7 +3,7 @@
 # Creates the image -- Only uses USERDATA and METADATA
 
 # Settings
-ISO64="ubuntu-22.04.2-live-server-amd64.iso" # Changed it to 22.04.2 hopping that nothing will break
+ISO64="ubuntu-22.04.5-live-server-amd64.iso" # Changed it to 22.04.2 hopping that nothing will break
 OUT64="unattended-${ISO64}"
 IMG64="base-amd64.img"
 
