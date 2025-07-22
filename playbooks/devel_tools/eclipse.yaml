@@ -1,4 +1,9 @@
 ---
+  - name: install unzip so we can extract eclipse
+    apt:
+      pkg: unzip
+      state: present
+  
   - name: install eclipse(64bit)
     unarchive: src=files/eclipse-java-2025-09-M1-linux-gtk-x86_64.tar.gz dest=/opt creates=/opt/eclipse
 

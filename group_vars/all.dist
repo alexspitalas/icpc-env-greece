@@ -23,6 +23,7 @@ devtools:
   - codeblocks
   - geany
   - vscode
+  - eclipse
   - intellij-idea
   - intellij-pycharm
   - intellij-clion
