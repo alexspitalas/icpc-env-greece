@@ -16,6 +16,23 @@
 
     - name: copy updated pam sudo config so it reads .pam_environment
       copy: src=files/pam_sudo dest=/etc/pam.d/sudo
+    
+    - name: copy Xresources
+      copy:
+        src: files/Xresources
+        dest: /etc/skel/.Xresources
+
+    - name: ensure Xresources is merged on session start (.xsessionrc)
+      copy:
+        dest: /etc/skel/.xsessionrc
+        content: |
+          [ -f ~/.Xresources ] && xrdb -merge ~/.Xresources
+
+    - name: ensure Xresources is merged on session start (.xprofile)
+      copy:
+        dest: /etc/skel/.xprofile
+        content: |
+          [ -f ~/.Xresources ] && xrdb -merge ~/.Xresources
 
 
     - name: disable fsync for dpkg
