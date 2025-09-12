@@ -138,6 +138,17 @@
     #     rm -f /empty
     #     sync
 
+    - name: Add delete-user alias for admin
+      lineinfile:
+        path: /home/icpcadmin/.bashrc
+        line: 'alias delete-user="sudo /icpc/scripts/deleteUser.sh"'
+        create: yes
+        owner: icpcadmin
+        group: icpcadmin
+        mode: '0644'
+
+    
+
   handlers:
     - name: clear user password
       command: passwd -d contestant
@@ -158,3 +169,6 @@
       ansible.builtin.service:
         name: nginx
         state: reloaded
+
+    
+
