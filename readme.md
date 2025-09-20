@@ -52,12 +52,12 @@ cd icpc-env-greece
     ```
   * Download the 64 bit version of eclipse into the `files/` directory:
     ```bash
-    cd files && curl -O  https://ftp2.osuosl.org/pub/eclipse/technology/epp/downloads/release/2025-09/M1/eclipse-java-2025-09-M1-linux-gtk-x86_64.tar.gz
+    cd files && curl -O  https://ftp2.osuosl.org/pub/eclipse/technology/epp/downloads/release/2025-09/R/eclipse-java-2025-09-R-linux-gtk-x86_64.tar.gz
     ```
 
   * Download Kotlin zip into the 'files/' directory
     ```bash
-    curl -O https://github.com/JetBrains/kotlin/releases/download/v2.2.0/kotlin-compiler-2.2.0.zip
+    curl -L -O https://github.com/JetBrains/kotlin/releases/download/v2.2.0/kotlin-compiler-2.2.0.zip
     ```
 
 1. Run secrets/gen-secrets.sh to create some ssh keys/other secret data. Follow this with ./fetch-secrets.sh to put them in the right place for ansible. Pass the ID of the contest as an argument on both scripts.

@@ -6,5 +6,23 @@
 
 - name: Enable ufw service
   ufw: state=enabled logging=off 
+
+
+- name: Deploy icpc-firewall systemd unit
+  copy:
+    src: ../files/systemd/icpc-firewall.service
+    dest: /etc/systemd/system/icpc-firewall.service
+    owner: root
+    mode: '0644'
+
+- name: Reload systemd to recognize new service
+  command: systemctl daemon-reload
+
+- name: Enable icpc-firewall service
+  systemd:
+    name: icpc-firewall.service
+    enabled: yes
+    state: started
+
 - name: Execute firewall script
   command: /icpc/scripts/firewall.sh
