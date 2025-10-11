@@ -1,7 +1,16 @@
 #!/bin/bash
 set -e
 
-# List of contest hosts to allow
+
+# Allow DNS traffic before attempting resolution
+ufw allow 53/tcp
+ufw allow 53/udp
+ufw allow 43/tcp
+
+# Wait a moment for UFW to apply rules
+sleep 2
+
+
 HOSTS=(
   "grcpc.gr"
   "grcpc.upatras.gr"
@@ -23,12 +32,6 @@ done
 
 
 # Existing static rules
-ufw allow from 155.207.131.147
-ufw allow out to 155.207.131.147 
-ufw allow from 150.140.140.3
-ufw allow out to 150.140.140.3
-ufw allow from 147.102.38.187 
-ufw allow out to 147.102.38.187
 ufw allow from 192.168.0.0/16 
 ufw allow out to 192.168.0.0/16
 ufw allow from 150.140.142.45 

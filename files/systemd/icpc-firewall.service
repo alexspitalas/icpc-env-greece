@@ -1,0 +1,13 @@
+[Unit]
+Description=ICPC Firewall Setup
+After=network-online.target
+Wants=network-online.target
+Requires=systemd-networkd-wait-online.service
+
+[Service]
+Type=oneshot
+ExecStart=/icpc/scripts/firewall.sh
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

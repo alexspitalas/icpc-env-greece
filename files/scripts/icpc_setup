@@ -3,7 +3,7 @@ from whiptail import Whiptail
 from pathlib import Path
 import urllib.request
 import csv
-from subprocess import PIPE, Popen
+from subprocess import PIPE, Popen, run, CalledProcessError
 import re
 import time
 import sys
@@ -15,6 +15,23 @@ from urllib.parse import urlparse, quote
 signal.signal(signal.SIGHUP, signal.SIG_IGN)
 
 
+def apply_firewall_rules():
+    try:
+        # Run the firewall.sh script; capture output and errors
+        result = run(
+            ["/icpc/scripts/firewall.sh"],
+            check=True,            # raise CalledProcessError on non-zero exit
+            stdout=PIPE,
+            stderr=PIPE,
+            text=True              # return output as strings
+        )
+        print("Firewall rules applied successfully.")
+        # Optionally, log result.stdout if desired
+    except CalledProcessError as e:
+        # Script failed—print warning and error output
+        print("Warning: firewall rules failed to apply")
+        print(f"Exit Code: {e.returncode}")
+        print(f"Error Output: {e.stderr}")
 
 def make_safe_url(url: str) -> str:
     """
@@ -140,7 +157,10 @@ def main():
     force = True
     if len(sys.argv) > 1 and (sys.argv[1] == "-f" or sys.argv[1] == "--force"):
         force = True
-
+    
+    # Apply firewall rules first thing
+    apply_firewall_rules()
+    
     # Exit if the configuration has already been run and the force argument was not specified
     if Path("/icpc/setup-complete").exists() and not force:
         print("Already configured. Run with -f or --force to reconfigure.")

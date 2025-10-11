@@ -7,7 +7,13 @@
 - name: Enable ufw service
   ufw: state=enabled logging=off 
 
-
+- name: Make firewall script executable
+  file:
+    path: /icpc/scripts/firewall.sh
+    mode: '0755'
+    owner: root
+    group: root
+    
 - name: Deploy icpc-firewall systemd unit
   copy:
     src: ../files/systemd/icpc-firewall.service
@@ -26,3 +32,4 @@
 
 - name: Execute firewall script
   command: /icpc/scripts/firewall.sh
+
