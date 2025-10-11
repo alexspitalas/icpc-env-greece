@@ -65,7 +65,7 @@ function waitforssh() {
   fi
 }
 
-qemu-system-x86_64 -smp 1 -m 1024 -drive file="$IMGFILE",index=0,media=disk,format=raw --enable-kvm -net user,hostfwd=tcp::$SSHPORT-:22 -net nic --daemonize --pidfile $PIDFILE -vnc :0 -vga qxl -spice port=5901,disable-ticketing=on -usbdevice tablet -cpu host
+qemu-system-x86_64 -smp 1 -m 1024 -drive file="$IMGFILE",index=0,media=disk,format=raw --enable-kvm -net user,hostfwd=tcp::$SSHPORT-:22 -net nic --daemonize --pidfile $PIDFILE -vnc :0 -vga qxl -spice port=5901,disable-ticketing -usbdevice tablet
 #qemu-system-x86_64 -smp 1 -m 1024 -drive file="$IMGFILE",index=0,media=disk,format=raw -global isa-fdc.driveA= --enable-kvm -net user,hostfwd=tcp::$SSHPORT-:22 -net nic --daemonize --pidfile $PIDFILE -vnc :0 -vga qxl -spice port=5901,disable-ticketing -usbdevice tablet
 
 ALIVE=0
@@ -82,8 +82,7 @@ EOF
 ANSIBLE_HOST_KEY_CHECKING=False time ansible-playbook -i $INVENTORY_FILE  --ssh-extra-args="-o IdentitiesOnly=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null" --diff --become -u imageadmin --private-key $SSH_BUILD_KEY main.yml
 rm -f $INVENTORY_FILE
 
-ssh -i $SSH_ICPCADMIN_KEY -o BatchMode=yes -o ConnectTimeout=1 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o IdentitiesOnly=yes  icpcadmin@localhost -p$SSHPORT 'nohup sudo bash -c "sleep 2 && reboot" >/dev/null2>&1 &' || true 
-
+ssh -i $SSH_ICPCADMIN_KEY -o BatchMode=yes -o ConnectTimeout=1 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o IdentitiesOnly=yes  icpcadmin@localhost -p$SSHPORT sudo reboot
 # Wait 5 seconds for reboot to happen so we don't ssh back in before it actually reboots
 sleep 20
 ALIVE=0
@@ -92,10 +91,29 @@ waitforssh
 echo "Preparing image for distribution"
 set -x
 ssh -i $SSH_ICPCADMIN_KEY -o BatchMode=yes -o ConnectTimeout=1 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o IdentitiesOnly=yes  icpcadmin@localhost -p$SSHPORT sudo bash -c "/icpc/scripts/makeDist.sh"
-sleep 5
-ssh -i $SSH_ICPCADMIN_KEY -o BatchMode=yes -o ConnectTimeout=30 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o IdentitiesOnly=yes  icpcadmin@localhost -p$SSHPORT sudo shutdown --poweroff --no-wall +1
+ssh -i $SSH_ICPCADMIN_KEY \
+    -o BatchMode=yes \
+    -o ConnectTimeout=30 \
+    -o StrictHostKeyChecking=no \
+    -o UserKnownHostsFile=/dev/null \
+    -o IdentitiesOnly=yes \
+    icpcadmin@localhost -p$SSHPORT \
+    sudo shutdown --poweroff --no-wall +1 || true
 
-# Dig holes in the file to make it sparse (i.e. smaller!)
-fallocate -d $IMGFILE
-echo "Image file created: $IMGFILE($(du -h $IMGFILE | cut -f1))"
+echo "Shutdown scheduled inside VM; waiting for SSH to close..."
+# Give the shutdown time to proceed and the SSH daemon to exit
+sleep 90
+
+# Force QEMU cleanup if still running
+if [ -f "$PIDFILE" ] && kill -0 "$(cat "$PIDFILE")" 2>/dev/null; then
+  echo "VM still running, forcing QEMU termination..."
+  kill "$(cat "$PIDFILE")" || true
+  sleep 5
+fi
+
+rm -f "$PIDFILE"
+
+# Now make image sparse
+fallocate -d "$IMGFILE"
+echo "Image file created: $IMGFILE ($(du -h "$IMGFILE" | cut -f1))"
 exit 0

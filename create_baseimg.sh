@@ -44,7 +44,7 @@ done
 # Default image size 14700M(fits on an 16G flash drive)
 # IMGSIZE=${IMGSIZE:-14700M}
 # Default image size 28500M(fits on an 32G flash drive)
-IMGSIZE=${IMGSIZE:-28500M} # 32G B file by default -- If you want to buy 64G flash drives this must change.
+IMGSIZE=${IMGSIZE:-88500M} # 32G B file by default -- If you want to buy 64G flash drives this must change.
 
 # Leave this as it is probably
 function create_unattended_iso(){
