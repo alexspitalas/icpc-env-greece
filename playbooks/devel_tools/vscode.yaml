@@ -16,6 +16,14 @@
   shell: code --extensions-dir /opt/vscode/extensions --user-data-dir /opt/vscode --no-sandbox --install-extension {{ item }}
   loop: "{{ vscode_extensions }}"
 
+# https://stackoverflow.com/questions/69706490/where-does-vscode-store-the-enabled-disabled-state-for-extensions
+- name: disable by default the extensions that cause the keybinds to change
+  shell: code --extensions-dir /opt/vscode/extensions --user-data-dir /opt/vscode --no-sandbox --disable-extension {{ item }}
+  loop:
+    - vscodevim.vim
+    - lfs.vscode-emacs-friendly
+  ignore_errors: yes
+
 - name: create a script to symlink our extensions
   copy:
     dest: /usr/local/bin/vscode-extension-install
@@ -33,3 +41,16 @@
       Type=Application
       Exec=/usr/local/bin/vscode-extension-install
       NoDisplay=true
+
+# Configure VS Code settings
+- name: create vscode User settings directory
+  file: path=/opt/vscode/User state=directory
+
+- name: create vscode settings.json
+  copy:
+    dest: /opt/vscode/User/settings.json
+    content: |
+      {
+        "extensions.autoUpdate": false,
+        "extensions.ignoreRecommendations": true
+      }
