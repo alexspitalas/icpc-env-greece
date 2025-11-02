@@ -54,6 +54,19 @@ cd icpc-env-greece
     ```bash
     cd files && curl -O  https://ftp2.osuosl.org/pub/eclipse/technology/epp/downloads/release/2025-09/R/eclipse-java-2025-09-R-linux-gtk-x86_64.tar.gz
     ```
+  * Also download these IDEs in the 'files/' directory:<br>
+    CLion:
+    ```bash
+    curl -O https://download-cdn.jetbrains.com/cpp/CLion-2025.2.4.tar.gz
+    ```
+    IntelliJ:
+    ```bash
+    curl -O https://download-cdn.jetbrains.com/idea/ideaIC-2025.2.4.tar.gz
+    ```
+    PyCharm:
+    ```bash
+    curl -O https://download-cdn.jetbrains.com/python/pycharm-2025.2.4.tar.gz
+    ```
 
   * Download Kotlin zip into the 'files/' directory
     ```bash
