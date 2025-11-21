@@ -96,4 +96,4 @@
   become: yes
   when:
     - clion_license_key is defined
-    - clion_dir.files | lenght > 0
+    - clion_dir.files | length > 0
