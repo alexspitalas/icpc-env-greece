@@ -19,7 +19,7 @@ allowed_domains:
   - https://algoforum.upatras.gr/                                   # Do we also have external dependencies ?? 
   - https://en.cppreference.com/w/c/language
   - https://en.cppreference.com/w/
-  - https://docs.oracle.com/en/java/javase/11/docs/api/index.html   # Imporant Change to the java Version we will use.
+  - https://docs.oracle.com/en/java/javase/21/docs/api/index.html   # Updated to Java 21 (ICPC 2025 standard)
   - https://docs.python.org/3/
   - https://chat.openai.com/                                        # jk jk :)
   # IMPORTANT ADD THE IP/DOMAIN OF THE CONTEST SERVER IN EACH CITY

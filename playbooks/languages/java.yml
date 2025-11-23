@@ -3,9 +3,9 @@
   apt:
     state: present
     pkg:
-      - openjdk-11-jdk
-      - openjdk-11-doc   # 246 mb
-      - openjdk-11-source   # 60 mb
+      - openjdk-21-jdk
+      - openjdk-21-doc   # Updated to match ICPC 2025 standards
+      - openjdk-21-source   # Updated to match ICPC 2025 standards
 
 - name: register docs
   block:
