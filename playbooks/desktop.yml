@@ -19,3 +19,8 @@
     - { name: 'VS Code', exec: 'code --new-window %F', icon: 'code' }
     - { name: 'Firefox', exec: 'firefox %u', icon: 'firefox' }
     - { name: 'Guide', exec: 'firefox /htmlfile/documentHtml/index.html', icon: 'firefox' }
+    - { name: 'CLion', comment: 'C/C++ IDE for ICPC', exec: '/opt/jetbrains/clion-{{ clion_version }}/bin/clion.sh', icon: '/opt/jetbrains/clion-{{ clion_version }}/bin/clion.svg' }
+    - { name: 'IntelliJ IDEA', comment: 'Java IDE for ICPC', exec: '/opt/jetbrains/idea-{{ intellij_version }}/bin/idea.sh', icon: '/opt/jetbrains/idea-{{ intellij_version }}/bin/idea.png' }
+    - { name: 'PyCharm', comment: 'Python IDE for ICPC', exec: '/opt/jetbrains/pycharm-{{ pycharm_version }}/bin/pycharm.sh', icon: '/opt/jetbrains/pycharm-{{ pycharm_version }}/bin/pycharm.png' }
+
+

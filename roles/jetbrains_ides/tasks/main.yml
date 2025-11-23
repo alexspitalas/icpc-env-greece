@@ -87,13 +87,20 @@
     mode: '0644'
   become: yes
 
+
+
 # CLion license
+- name: Create CLion config directory
+  file:
+    path: "/home/contestant/.config/JetBrains/CLion2025.2"
+    state: directory
+    mode: '0755'
+  become: yes
+
+
+
 - name: Add CLion license
   copy:
-    content: "{{ clion_license_key }}"
-    dest: "{{ clion_dir.files | last | attr('path') }}/bin/clion.license"
+    src: "files/clion.key"
+    dest: "/home/contestant/.config/JetBrains/CLion2025.2/clion.key"
     mode: '0644'
-  become: yes
-  when:
-    - clion_license_key is defined
-    - clion_dir.files | length > 0

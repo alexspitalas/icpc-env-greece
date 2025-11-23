@@ -184,3 +184,19 @@
       opts="defaults,uid=contestant,gid=contestant"
       state=present
 
+- name: Fix CLion config ownership for contestant user
+  file:
+    path: "/home/contestant/.config"
+    state: directory
+    recurse: yes
+    owner: contestant
+    group: contestant
+
+- name: Ensure .config directory has correct permissions
+  file:
+    path: "/home/contestant/.config"
+    state: directory
+    mode: '0755'
+    owner: contestant
+    group: contestant
+    recurse: yes
