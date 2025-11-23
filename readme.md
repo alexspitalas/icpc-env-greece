@@ -17,6 +17,34 @@ We will reduce the features of the original image to supports the following:
 * Fully customizable, automated process for building consistent images
 * Lightweight XFCE desktop environment
 
+### Improvements Over Previous Setup
+- **Up-to-date content** (2025 vs 2019 - 6 years newer)
+- **C++20/C++23 features** included
+- **Search functionality** - find functions/classes instantly
+- **Better organization** - unified documentation experience
+- **Desktop integration** - easy access during contests
+
+## IDE Java Version Consistency
+
+### Eclipse Configuration
+Eclipse is configured to use Java 21 consistently with the system-wide installation:
+
+- **Compiler Compliance Level**: Java 21
+- **JVM Paths**: Points to `/usr/lib/jvm/java-21-openjdk-amd64`
+- **JavaDoc**: Links to Java 21 API documentation
+- **Default JDK**: Set to OpenJDK 21
+
+This ensures that:
+- Code compiled in Eclipse matches DOMjudge compilation
+- No version mismatch errors during development
+- Consistent behavior between IDE and command-line compilation
+- Access to Java 21 features (records, pattern matching, virtual threads, etc.)
+
+### Other IDEs
+- **IntelliJ IDEA**: Automatically detects system Java 21
+- **VS Code**: Uses system Java via extensions
+- **Command Line**: `javac` and `java` commands use Java 21
+
 ## Usage Requirements
 * 64bit hardware
 * USB boot capable(BIOS + UEFI supported)
