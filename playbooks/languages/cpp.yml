@@ -1,11 +1,26 @@
 ---
+# Add G++ 13 repository for ICPC 2025 compliance
+- name: add gcc-13 repository
+  apt_repository:
+    repo: ppa:ubuntu-toolchain-r/test
+    state: present
+    update_cache: yes
+
 - name: cpp
   apt:
     state: present
     pkg:
-      - g++
+      - g++-13
+      - g++  # Keep default g++ for compatibility
       - stl-manual      # 2.5mb
       - unzip # for dealing with docs
+
+- name: set g++-13 as default
+  alternatives:
+    name: g++
+    path: /usr/bin/g++-13
+    link: /usr/bin/g++
+    priority: 100
 
 # From https://en.cppreference.com/w/Cppreference:Archives
 - name: create directories

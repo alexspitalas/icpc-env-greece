@@ -3,9 +3,9 @@
   apt:
     state: present
     pkg:
-      - openjdk-11-jdk
-      - openjdk-11-doc   # 246 mb
-      - openjdk-11-source   # 60 mb
+      - openjdk-21-jdk
+      - openjdk-21-doc   # 246 mb
+      - openjdk-21-source   # 60 mb
 
 - name: register docs
   block:
@@ -15,7 +15,7 @@
             value:
               name: Java API Documentation
               id: java_api
-              path: /usr/share/doc/openjdk-11-doc/api
+              path: /usr/share/doc/openjdk-21-doc/api
               index: index.html
       register: updated
     - set_fact:

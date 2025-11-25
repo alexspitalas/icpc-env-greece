@@ -16,6 +16,7 @@ signal.signal(signal.SIGHUP, signal.SIG_IGN)
 
 
 def apply_firewall_rules():
+    return
     try:
         # Run the firewall.sh script; capture output and errors
         result = run(

@@ -109,7 +109,7 @@
     - import_tasks: 'playbooks/system.yml'
     - import_tasks: 'playbooks/desktop.yml'
 
-    - import_tasks: 'playbooks/firewall.yaml'
+    - import_tasks: 'playbooks/firewall.yml'
 
     # Management related things
     #- import_tasks: 'playbooks/ansible-pull.yml'

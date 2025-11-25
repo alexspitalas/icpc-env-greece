@@ -1,0 +1,74 @@
+---
+- name: Install squid
+  apt:
+    pkg:
+      - squid-common
+      - squid-openssl
+    state: present
+
+- name: Create Squid ACL from allowed_domains
+  copy:
+    dest: /etc/squid/acl_allowed_domains.txt
+    mode: '0644'
+    content: |
+      # Auto-generated from group_vars/all
+      {% for domain in allowed_domains %}
+      .{{ domain }}
+      {% endfor %}
+      # Local access
+      localhost
+      127.0.0.1
+  notify: restart squid
+
+- name: configure squid
+  template: src=files/squid/squid.conf.j2 dest=/etc/squid/squid.conf
+  notify: restart squid
+
+- name: make sure an autologin.conf file exists or squid won't start
+  copy: content="#placeholder\n" dest=/etc/squid/autologin.conf mode=0640 owner=root group=root
+
+- name: copy a pretty error page for squid to use
+  template: src=files/squid/block.html.j2 dest=/usr/share/squid/errors/templates/ICPC_ERR_ACCESS_DENIED
+
+- name: generate a fake CA for squid to use
+  shell: openssl req -new -newkey rsa:2048 -days 360 -nodes -x509 -keyout /etc/squid/squidCA.pem -out /etc/squid/squidCA.crt -subj "/O=ICPC Network Filter/CN=ICPC Network Filter"
+  args:
+    creates: /etc/squid/squidCA.crt
+
+- name: ensure that the squidCA is trusted by the system
+  file:
+    src: /etc/squid/squidCA.crt
+    dest: /usr/local/share/ca-certificates/squid-ca.crt
+    state: link
+  notify: update-ca-certificates
+
+- name: initialize squid ssl cache
+  shell: /usr/lib/squid/security_file_certgen -c -s /var/spool/squid/ssl_db -M 4MB
+  args:
+    creates: /var/spool/squid/ssl_db/index.txt
+
+- name: configure system to use the proxy by default
+  lineinfile: dest=/etc/environment line="{{item}}"
+  with_items:
+    - http_proxy="http://localhost:3128/"
+    - https_proxy="http://localhost:3128/"
+    - ftp_proxy="http://localhost:3128/"
+    - no_proxy="localhost,127.0.0.1"
+    - HTTP_PROXY="http://localhost:3128/"
+    - HTTPS_PROXY="http://localhost:3128/"
+    - FTP_PROXY="http://localhost:3128/"
+    - NO_PROXY="localhost,127.0.0.1"
+
+- name: Make sure inbound policy is deny
+  ufw: direction=incoming policy=deny
+
+- name: allow inbound ssh
+  ufw: rule=allow name=OpenSSH
+
+- name: enable the firewall
+  ufw: state=enabled logging=off
+
+- name: prevent the 'contestant' user from using the network(except through the proxy or to localhost)
+  lineinfile: dest=/etc/ufw/before.rules line="-I ufw-before-output -m owner --uid-owner contestant -j REJECT" insertbefore="^# don't delete the 'COMMIT' line" state=present
+- name: Allow the contestant user(and others) to talk to localhost from localhost). Fixes issue with intellij/eclipse compilation/debugging.
+  lineinfile: dest=/etc/ufw/before.rules line="-I ufw-before-output -s 127.0.0.1 -d 127.0.0.1 -j ACCEPT" insertafter="uid-owner contestant -j REJECT" state=present

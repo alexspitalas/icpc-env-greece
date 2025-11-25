@@ -1,8 +1,21 @@
 ---
-- name: C Language
+# Add GCC 13 repository for ICPC 2025 compliance
+- name: add gcc-13 repository
+  apt_repository:
+    repo: ppa:ubuntu-toolchain-r/test
+    state: present
+    update_cache: yes
+
+- name: c
   apt:
     state: present
     pkg:
-      - gcc
-      - gdb
-    
+      - gcc-13
+      - gcc  # Keep default gcc for compatibility
+
+- name: set gcc-13 as default
+  alternatives:
+    name: gcc
+    path: /usr/bin/gcc-13
+    link: /usr/bin/gcc
+    priority: 100

@@ -25,9 +25,22 @@ http_access deny CONNECT !SSL_ports
 http_access deny manager
 
 # Block everything except our reverseproxy, which will filter the allowed network destinations
+#acl reverseproxy dst 127.0.0.1
+#http_access allow reverseproxy
+#http_access deny all
+# ===== ALLOWED DOMAINS =====
+acl allowed_domains dstdom_regex -i "/etc/squid/acl_allowed_domains.txt"
 acl reverseproxy dst 127.0.0.1
+acl localnet src 127.0.0.0/8 192.168.0.0/16 10.0.0.0/8 172.16.0.0/12
+
+# NEW: Allow whitelisted domains
+http_access allow localnet allowed_domains
+# Allow reverse proxy
 http_access allow reverseproxy
+
+# Block everything else
 http_access deny all
+
 # show a block page
 deny_info ICPC_ERR_ACCESS_DENIED all
 

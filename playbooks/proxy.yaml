@@ -19,3 +19,4 @@
   lineinfile:
     path: /etc/environment
     line: 'http_proxy="http://localhost:8888/"'
+
