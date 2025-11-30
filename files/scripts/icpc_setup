@@ -240,7 +240,9 @@ def main():
 
     # Apply the configuration things previously specified
     apply_configuration()
-    apply_wallpaper()
+    
+    #Uncomment if we give team information on wallpaper
+    #apply_wallpaper()
     #if cfg_printing:
     #    ret = apply_printers()
     #    if not ret:

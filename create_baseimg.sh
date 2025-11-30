@@ -3,7 +3,7 @@
 # Creates the image -- Only uses USERDATA and METADATA
 
 # Settings
-ISO64="ubuntu-22.04.5-live-server-amd64.iso"
+ISO64="ubuntu-24.04-live-server-amd64.iso"
 OUT64="unattended-${ISO64}"
 IMG64="base-amd64.img"
 
@@ -139,3 +139,4 @@ qemu-system-x86_64 \
   -usbdevice tablet \
   -cpu host
 # -global isa-fdc.driveA= is used to disable floppy drive(gets rid of a warning message)
+echo "finished"

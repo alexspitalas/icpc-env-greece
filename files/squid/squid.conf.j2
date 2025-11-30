@@ -29,12 +29,13 @@ http_access deny manager
 #http_access allow reverseproxy
 #http_access deny all
 # ===== ALLOWED DOMAINS =====
-acl allowed_domains dstdom_regex -i "/etc/squid/acl_allowed_domains.txt"
+acl allowed_domains dstdomain "/etc/squid/acl_allowed_domains.txt"
 acl reverseproxy dst 127.0.0.1
-acl localnet src 127.0.0.0/8 192.168.0.0/16 10.0.0.0/8 172.16.0.0/12
+#acl localnet src 127.0.0.0/8 192.168.0.0/16 10.0.0.0/8 172.16.0.0/12
 
 # NEW: Allow whitelisted domains
-http_access allow localnet allowed_domains
+#http_access allow localnet
+http_access allow allowed_domains
 # Allow reverse proxy
 http_access allow reverseproxy
 

@@ -10,6 +10,24 @@ icpcadmin_pass: icpcadmin
 #The auth token that is used to allow traffic to the server
 auth_token: "1234"
 
+# urls we are configured to send autologin credentials to
+# TODO: allow https as well :/
+squid_autologin_urls: []
+  # - ^http://ser2019.cloudcontest.org/login
+allowed_domains:
+  - cppreference.com
+  - docs.python.org
+  - docs.oracle.com
+  - domjudge.org
+  - grcpc.gr
+  - seerc2025.algotester.com
+  - seerc.euc.icpc.global
+  - scoreboard-seerc.icpc.global
+  - judge-seerc.icpc.global
+
+
+
+
 #This is fine as long as we understand how the languages are beeing set up.
 # Check the java version that is beeing downloaded
 languages:
@@ -17,17 +35,18 @@ languages:
   - cpp
   - java
   - python3
-  - kotlin
+#  - kotlin
 
 devtools:
   - codeblocks
   - geany
   - vscode
   - eclipse
-  - intellij-idea
-  - intellij-pycharm
-  - intellij-clion
   - netbeans
+#  - intellij-idea
+#  - intellij-pycharm
+#  - intellij-clion
+
 
 vscode_extensions:
   # C/C++
@@ -50,29 +69,51 @@ vscode_extensions:
 # Firefox policies. Documented here:
 # https://mozilla.github.io/policy-templates/
 firefox_policies:
-  # Set (and lock) the homepage to the given url
-  # Homepage:
-  #   URL: "http://contest"
-  #   Locked: true
-  #   StartPage: homepage-locked
+  # Enable and lock the homepage
+  Homepage:
+    URL: "file:///htmlfile/documentHtml/index.html"
+    Locked: true
+    StartPage: homepage
   # Add some bookmark entries (and always show the bookmarks toolbar)
-  DisplayBookmarksToolbar: always
+  DisplayBookmarksToolbar: true
   Bookmarks:
-    - Title: Programming Docs
+    - Title: "Programming Docs"
       URL: "file:///opt/localwww/index.html"
       Placement: "toolbar"
-    - Title: Help Guide
+    - Title: "Help Guide"
       URL: "file:///htmlfile/documentHtml/index.html"
       Placement: "toolbar"
-    - Title: GRCPC
-      URL: "http://grcpc.gr"
+    - Title: "Domjudge"
+      URL: "http://judge-seerc.icpc.global"
       Placement: "toolbar"
+    - Title: "algotester"
+      URL: "http://seerc2025.algotester.com"
+      Placement: "toolbar"
+    - Title: "Global Scoreboard"
+      URL: "http://scoreboard-seerc.icpc.global"
+      Placement: "toolbar"
+#    - Title: GRCPC
+#      URL: "http://grcpc.gr"
+#      Placement: "toolbar"
 
 firefox_default_policies:
+  # Disable internet checking (it'll fail when the proxy is on so we want to avoid the notification banner)
+  CaptivePortal: false
   # Prevent updating (shouldn't happen on linux, but we want to avoid it anyway)
   DisableAppUpdate: true
+  # Prevent first run page/post update pages from showing up
+  OverrideFirstRunPage: ""
+  OverridePostUpdatePage: ""
   # What it says on the tin. This is to prevent a banner on first start about what it's sharing
   DisableTelemetry: true
+  # Disable DNS over HTTPS (this might get around filters/things)
+  DNSOverHTTPS:
+    Enabled: false
+  # Install the squid CA so it can mitm things/properly filter the network
+  Certificates: {
+    ImportEnterpriseRoots: true,
+    Install: ["/etc/squid/squidCA.crt"]
+  }
 
   # Disable a bunch of random features we don't need
   DisablePocket: true

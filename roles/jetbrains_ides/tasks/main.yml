@@ -6,6 +6,8 @@
     mode: '0755'
   become: yes
 
+
+
 # Extract IDEs
 - name: Extract IntelliJ Community IDEA
   unarchive:
@@ -99,8 +101,33 @@
 
 
 
-- name: Add CLion license
+#- name: Add CLion license
+#  copy:
+#    src: "files/clion.key"
+#    dest: "/home/contestant/.config/JetBrains/CLion2025.2/clion.key"
+#    mode: '0644'
+
+# Clion likes a weirdly formatted keyfile (UCS2 encoding with a BOM)
+- name: create a script to configure clion license
   copy:
-    src: "files/clion.key"
-    dest: "/home/contestant/.config/JetBrains/CLion2025.2/clion.key"
-    mode: '0644'
+    dest: /usr/local/bin/clion-license-key-install
+    mode: 0755
+    content: |
+      #!/bin/bash
+      mkdir -p $HOME/.config/JetBrains/CLion2025.2
+      (
+        printf '\xFF\xFF';
+        echo -en "<certificate-key>\n{{ clion_license_key }}" | iconv -f UTF-8 -t UCS2 -
+      ) > $HOME/.config/JetBrains/CLion2025.2/clion.key
+  when: clion_license_key | length > 0
+
+- name: add licensekey script to autostart
+  copy:
+    dest: /etc/xdg/autostart/clion-license-key-install.desktop
+    content: |
+      [Desktop Entry]
+      Type=Application
+      Exec=/usr/local/bin/clion-license-key-install
+      NoDisplay=true
+  when: clion_license_key | length > 0
+

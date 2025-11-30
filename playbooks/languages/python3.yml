@@ -30,7 +30,7 @@
             value:
               name: PyPy3 Documentation
               id: pypy3
-              path: /usr/share/doc/pypy3-doc/html
+              path: /usr/share/doc/pypy3/html
               index: index.html
       register: updated
     - set_fact:

@@ -39,6 +39,38 @@
   community.general.timezone:
     name: "{{ icpc_timezone }}"
 
+#- name: disable apt proxy temporarily
+#  shell: |
+#    unset http_proxy https_proxy HTTP_PROXY HTTPS_PROXY
+#    apt-key adv --keyserver keyserver.ubuntu.com --recv-keys YOUR_KEY || true
+#  environment:
+#    http_proxy: ""
+#    https_proxy: ""
+#    HTTP_PROXY: ""
+#    HTTPS_PROXY: ""
+
+#- name: clear apt proxy configuration
+#  file:
+##    path: /etc/apt/apt.conf.d/proxy.conf
+ #   state: absent
+#  ignore_errors: yes
+
+#- name: update apt cache without proxy
+#  apt:
+#    update_cache: yes
+#  environment:
+#    http_proxy: ""
+#    https_proxy: ""
+
+#script to find statistics about ides
+- name: copy s.py to /usr/local/bin
+  copy:
+    src: files/scripts/s.py
+    dest: /usr/local/bin/s.py
+    owner: root
+    group: root
+    mode: '0755'
+
 # ICPC tools we need
 - name: install ICPC tools we need
   apt:
@@ -58,6 +90,9 @@
       - wmctrl # can set always on top, plus check if it's still the active window and restart it if not (e.g. ctrl+alt+left/right swap desktops)
       - xdotool # to detect if it's still on top/other things?
       - python3-xlib  # maybe we'll write our own xorg fullscreen thing to replace the above 3 things...
+  environment:
+    http_proxy: ""
+    https_proxy: ""
 
 - name: stop/disable cups-browsed from autodiscovering printers
   service: name=cups-browsed state=stopped enabled=no
@@ -138,6 +173,14 @@
 - name: disable proxy for icpcadmin
   copy: src=files/pam_environment dest=/home/icpcadmin/.pam_environment
 
+- name: ensure polkit local authority directory exists
+  file:
+    path: /etc/polkit-1/localauthority/50-local.d
+    state: directory
+    mode: '0755'
+    owner: root
+    group: root
+    
 - name: use polkit to disable mounting anything
   copy: src=files/99-deny-polkit-mount.pkla dest=/etc/polkit-1/localauthority/50-local.d/disable-mount.pkla mode=0644 owner=root group=root
 

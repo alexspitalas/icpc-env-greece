@@ -30,10 +30,10 @@ fi
 
 # DELETE: Remove contestant files and user
 echo "Deleting team files..."
-find / -user contestant ! -path "*/.config/*" -delete
+#find / -user contestant ! -path "*/.config/*" -delete
 
 echo "Deleting contestant user"
-userdel contestant
+userdel -f -r contestant 2>/dev/null || true
 rm -rf /home/contestant
 
 echo "Recreating contestant user"

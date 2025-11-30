@@ -15,9 +15,7 @@
       {% for domain in allowed_domains %}
       .{{ domain }}
       {% endfor %}
-      # Local access
-      localhost
-      127.0.0.1
+
   notify: restart squid
 
 - name: configure squid
@@ -72,3 +70,4 @@
   lineinfile: dest=/etc/ufw/before.rules line="-I ufw-before-output -m owner --uid-owner contestant -j REJECT" insertbefore="^# don't delete the 'COMMIT' line" state=present
 - name: Allow the contestant user(and others) to talk to localhost from localhost). Fixes issue with intellij/eclipse compilation/debugging.
   lineinfile: dest=/etc/ufw/before.rules line="-I ufw-before-output -s 127.0.0.1 -d 127.0.0.1 -j ACCEPT" insertafter="uid-owner contestant -j REJECT" state=present
+

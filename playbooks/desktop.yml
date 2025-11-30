@@ -16,11 +16,157 @@
       Type=Application
       Terminal=false
   loop:
-    - { name: 'VS Code', exec: 'code --new-window %F', icon: 'code' }
     - { name: 'Firefox', exec: 'firefox %u', icon: 'firefox' }
     - { name: 'Guide', exec: 'firefox /htmlfile/documentHtml/index.html', icon: 'firefox' }
-    - { name: 'CLion', comment: 'C/C++ IDE for ICPC', exec: '/opt/jetbrains/clion-{{ clion_version }}/bin/clion.sh', icon: '/opt/jetbrains/clion-{{ clion_version }}/bin/clion.svg' }
-    - { name: 'IntelliJ IDEA', comment: 'Java IDE for ICPC', exec: '/opt/jetbrains/idea-{{ intellij_version }}/bin/idea.sh', icon: '/opt/jetbrains/idea-{{ intellij_version }}/bin/idea.png' }
-    - { name: 'PyCharm', comment: 'Python IDE for ICPC', exec: '/opt/jetbrains/pycharm-{{ pycharm_version }}/bin/pycharm.sh', icon: '/opt/jetbrains/pycharm-{{ pycharm_version }}/bin/pycharm.png' }
 
+
+# Create VS Code shortcut (always available)
+- name: Create VS Code desktop shortcut
+  copy:
+    dest: /root/DesktopTemplates/VSCode.desktop
+    mode: '0755'
+    content: |
+      [Desktop Entry]
+      Name=VS Code
+      Exec=code --new-window %F
+      Icon=code
+      Type=Application
+      Terminal=false
+
+# Create Code::Blocks shortcut - only if 'codeblocks' in devtools
+- name: Create Code::Blocks desktop shortcut
+  when: "'codeblocks' in devtools"
+  copy:
+    dest: /root/DesktopTemplates/CodeBlocks.desktop
+    mode: '0755'
+    content: |
+      [Desktop Entry]
+      Name=Code::Blocks
+      Comment=C/C++ IDE for ICPC
+      Exec=codeblocks %F
+      Icon=codeblocks
+      Type=Application
+      Terminal=false
+
+# Create Geany shortcut - only if 'geany' in devtools
+- name: Create Geany desktop shortcut
+  when: "'geany' in devtools"
+  copy:
+    dest: /root/DesktopTemplates/Geany.desktop
+    mode: '0755'
+    content: |
+      [Desktop Entry]
+      Name=Geany
+      Comment=Lightweight Code Editor for ICPC
+      Exec=geany %F
+      Icon=geany
+      Type=Application
+      Terminal=false
+
+# Create Eclipse shortcut - only if 'eclipse' in devtools
+- name: Create Eclipse desktop shortcut
+  when: "'eclipse' in devtools"
+  copy:
+    dest: /root/DesktopTemplates/Eclipse.desktop
+    mode: '0755'
+    content: |
+      [Desktop Entry]
+      Name=Eclipse
+      Comment=Java/C++ IDE for ICPC
+      Exec=/opt/eclipse/eclipse
+      Icon=/opt/eclipse/icon.xpm
+      Type=Application
+      Terminal=false
+
+# Create NetBeans shortcut - only if 'netbeans' in devtools
+- name: Create NetBeans desktop shortcut
+  when: "'netbeans' in devtools"
+  copy:
+    dest: /root/DesktopTemplates/NetBeans.desktop
+    mode: '0755'
+    content: |
+      [Desktop Entry]
+      Name=NetBeans
+      Comment=Java/C++ IDE for ICPC
+      Exec=netbeans
+      Icon=apache-netbeans
+      Type=Application
+      Terminal=false
+
+# CLion - only if 'intellij-clion' in devtools
+- name: Create CLion desktop shortcut
+  when: "'intellij-clion' in devtools"
+  copy:
+    dest: /root/DesktopTemplates/CLion.desktop
+    mode: '0755'
+    content: |
+      [Desktop Entry]
+      Name=CLion
+      Comment=C/C++ IDE for ICPC
+      Exec=/opt/jetbrains/clion-{{ clion_version }}/bin/clion.sh
+      Icon=/opt/jetbrains/clion-{{ clion_version }}/bin/clion.svg
+      Type=Application
+      Terminal=false
+
+- name: Find IntelliJ IDEA installation directory
+  when: "'intellij-idea' in devtools"
+  find:
+    paths: /opt/jetbrains
+    patterns: "idea*"
+    file_type: directory
+  register: idea_dirs
+
+- name: Set IntelliJ IDEA path
+  when: 
+    - "'intellij-idea' in devtools"
+    - idea_dirs.files | length > 0
+  set_fact:
+    idea_path: "{{ idea_dirs.files[0].path }}"
+
+- name: Create IntelliJ IDEA desktop shortcut
+  when: 
+    - "'intellij-idea' in devtools"
+    - idea_path is defined
+  copy:
+    dest: /root/DesktopTemplates/IntelliJIDEA.desktop
+    mode: '0755'
+    content: |
+      [Desktop Entry]
+      Name=IntelliJ IDEA
+      Comment=Java IDE for ICPC
+      Exec={{ idea_path }}/bin/idea.sh
+      Icon={{ idea_path }}/bin/idea.svg
+      Type=Application
+      Terminal=false
+
+
+# PyCharm - only if 'intellij-pycharm' in devtools
+- name: Create PyCharm desktop shortcut
+  when: "'intellij-pycharm' in devtools"
+  copy:
+    dest: /root/DesktopTemplates/PyCharm.desktop
+    mode: '0755'
+    content: |
+      [Desktop Entry]
+      Name=PyCharm
+      Comment=Python IDE for ICPC
+      Exec=/opt/jetbrains/pycharm-{{ pycharm_version }}/bin/pycharm.sh
+      Icon=/opt/jetbrains/pycharm-{{ pycharm_version }}/bin/pycharm.png
+      Type=Application
+      Terminal=false
+
+# Eclipse - only if 'eclipse' in devtools
+- name: Create Eclipse desktop shortcut
+  when: "'eclipse' in devtools"
+  copy:
+    dest: /root/DesktopTemplates/Eclipse.desktop
+    mode: '0755'
+    content: |
+      [Desktop Entry]
+      Name=Eclipse
+      Comment=Java/C++ IDE for ICPC
+      Exec=/opt/eclipse/eclipse
+      Icon=/opt/eclipse/icon.xpm
+      Type=Application
+      Terminal=false
 
