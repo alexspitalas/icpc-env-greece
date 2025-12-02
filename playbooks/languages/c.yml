@@ -1,4 +1,5 @@
 ---
+<<<<<<< Updated upstream
 - name: C Language
   apt:
     state: present
@@ -6,3 +7,25 @@
       - gcc
       - gdb
     
+=======
+# Add GCC 14 repository for ICPC 2025 compliance
+- name: add gcc-14 repository
+  apt_repository:
+    repo: ppa:ubuntu-toolchain-r/test
+    state: present
+    update_cache: yes
+
+- name: c
+  apt:
+    state: present
+    pkg:
+      - gcc-14
+      - gcc  # Keep default gcc for compatibility
+
+- name: set gcc-14 as default
+  alternatives:
+    name: gcc
+    path: /usr/bin/gcc-14
+    link: /usr/bin/gcc
+    priority: 100
+>>>>>>> Stashed changes

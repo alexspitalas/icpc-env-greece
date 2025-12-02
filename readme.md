@@ -17,6 +17,73 @@ We will reduce the features of the original image to supports the following:
 * Fully customizable, automated process for building consistent images
 * Lightweight XFCE desktop environment
 
+<<<<<<< Updated upstream
+=======
+### Improvements Over Previous Setup
+- **Up-to-date content** (2025 vs 2019 - 6 years newer)
+- **C++20/C++23 features** included
+- **Search functionality** - find functions/classes instantly
+- **Better organization** - unified documentation experience
+- **Desktop integration** - easy access during contests
+
+## IDE Java Version Consistency
+
+### Eclipse Configuration
+Eclipse is configured to use Java 21 consistently with the system-wide installation:
+
+- **Compiler Compliance Level**: Java 21
+- **JVM Paths**: Points to `/usr/lib/jvm/java-21-openjdk-amd64`
+- **JavaDoc**: Links to Java 21 API documentation
+- **Default JDK**: Set to OpenJDK 21
+
+This ensures that:
+- Code compiled in Eclipse matches DOMjudge compilation
+- No version mismatch errors during development
+- Consistent behavior between IDE and command-line compilation
+- Access to Java 21 features (records, pattern matching, virtual threads, etc.)
+
+### Other IDEs
+- **IntelliJ IDEA**: Automatically detects system Java 21
+- **VS Code**: Uses system Java via extensions
+- **Command Line**: `javac` and `java` commands use Java 21
+
+### Code::Blocks Configuration
+Code::Blocks is configured with fixes for common Linux issues:
+
+**Terminal Paste Fix**:
+- Terminal switched from `xterm` to `gnome-terminal`
+- Enables proper paste support with **Ctrl+Shift+V**
+- Copy with **Ctrl+Shift+C** or select text to auto-copy
+
+**Stability Improvements**:
+- Pre-configured default settings to avoid first-run dialogs
+- Disabled splash screen for faster startup
+- **Auto-save enabled (every 5 minutes)** to protect against crashes
+- **Single instance mode** to reduce window management issues
+- GCC 14 set as default compiler
+
+**⚠️ CRITICAL KNOWN ISSUE - Window Crash Bug**:
+
+Moving duplicate Code::Blocks windows **WILL crash the application**. This is a known wxWidgets bug on Linux that cannot be fixed without recompiling from source.
+
+**To avoid crashes:**
+- ❌ **DO NOT** drag/move multiple Code::Blocks windows
+- ❌ **DO NOT** drag tabs to create new windows  
+- ❌ **DO NOT** tile/arrange multiple Code::Blocks windows
+- ✅ **DO** use single-window mode (enabled by default)
+- ✅ **DO** maximize the main window instead of tiling
+- ✅ **DO** save frequently with Ctrl+S or File → Save All
+
+**If Code::Blocks crashes:**
+- Auto-save runs every 5 minutes - recent work should be preserved
+- Restart Code::Blocks and look for auto-save recovery
+- Important files should also be saved to the external FAT32 partition
+
+**Desktop Files**: 
+- `⚠️-CodeBlocks-IMPORTANT.txt` - Critical crash warning (read this first!)
+- `CodeBlocks-Tips.txt` - Complete usage guide with shortcuts and tips
+
+>>>>>>> Stashed changes
 ## Usage Requirements
 * 64bit hardware
 * USB boot capable(BIOS + UEFI supported)
@@ -140,4 +207,53 @@ functions.
 
 Once you have ansible performing all the tasks you need, halt the vm, then
 continue with the `build-final.sh` script. You should never use an image created
+<<<<<<< Updated upstream
 by the `runvm.sh` script, always build images using `build-final.sh`
+=======
+by the `runvm.sh` script, always build images using `build-final.sh`
+
+## DOMjudge Configuration
+
+To ensure consistency between the contestant environment and judging system, configure DOMjudge with these exact compiler flags:
+
+### languages.yaml Configuration
+
+```yaml
+c:
+  name: "C"
+  extensions: ["c"]
+  compile_script: "gcc -x c -g -O2 -std=gnu11 -static -o $DEST $SOURCES -lm"
+  
+cpp:
+  name: "C++"
+  extensions: ["cc", "cpp", "cxx", "c++"]
+  compile_script: "g++ -x c++ -g -O2 -std=gnu++20 -static -o $DEST $SOURCES"
+  
+java:
+  name: "Java"
+  extensions: ["java"]
+  compile_script: "javac -encoding UTF-8 -sourcepath . -d . $SOURCES"
+  run_script: "java -Dfile.encoding=UTF-8 -XX:+UseSerialGC -Xss64m -Xms{memlim}m -Xmx{memlim}m $MAINCLASS"
+  
+kotlin:
+  name: "Kotlin"
+  extensions: ["kt"]
+  compile_script: "kotlinc -d . $SOURCES"
+  run_script: "kotlin -Dfile.encoding=UTF-8 -J-XX:+UseSerialGC -J-Xss64m -J-Xms{memlim}m -J-Xmx{memlim}m $MAINCLASS"
+  
+python3:
+  name: "Python 3"
+  extensions: ["py"]
+  run_script: "pypy3 $MAINFILE"  # Use PyPy3, not CPython
+```
+
+### Compiler Versions
+
+The contestant environment now includes:
+- **Java**: OpenJDK 21 (updated from 11 to match ICPC 2025 standards)
+- **Kotlin**: Version 1.9.24 (updated from 1.7.10)
+- **C/C++**: gcc/g++ 14.x (installed from ubuntu-toolchain-r PPA to match ICPC 2025 standards)
+- **Python**: PyPy3 (primary interpreter for judging)
+
+**Note**: GCC/G++ 14 is installed from the ubuntu-toolchain-r PPA and set as the default compiler to ensure ICPC 2025 compliance.
+>>>>>>> Stashed changes

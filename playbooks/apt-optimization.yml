@@ -1,0 +1,34 @@
+---
+# APT optimization for faster builds
+# Include this early in main.yml for faster package downloads
+
+- name: configure faster apt mirror for Greece/Europe
+  replace:
+    path: /etc/apt/sources.list
+    regexp: 'http://archive.ubuntu.com/ubuntu'
+    replace: 'http://gr.archive.ubuntu.com/ubuntu'
+  when: use_greek_mirror is defined and use_greek_mirror
+
+- name: enable parallel apt downloads
+  copy:
+    dest: /etc/apt/apt.conf.d/99parallel
+    content: |
+      # Enable parallel downloads for faster package installation
+      APT::Acquire::Queue-Mode "host";
+      APT::Acquire::Retries "3";
+      Acquire::http::Pipeline-Depth "5";
+
+- name: configure apt cache proxy if available
+  copy:
+    dest: /etc/apt/apt.conf.d/02proxy
+    content: |
+      # Use local apt-cacher-ng proxy if available
+      # This dramatically speeds up repeated builds
+      Acquire::http::Proxy "http://10.0.2.2:3142";
+  when: use_apt_cache is defined and use_apt_cache
+  ignore_errors: yes  # Don't fail if proxy isn't available
+
+- name: update apt cache
+  apt:
+    update_cache: yes
+    cache_valid_time: 3600

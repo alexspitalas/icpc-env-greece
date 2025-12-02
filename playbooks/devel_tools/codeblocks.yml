@@ -1,0 +1,194 @@
+---
+# Install Code::Blocks with fixes for terminal pasting and stability issues
+- name: install codeblocks packages
+  apt:
+    state: present
+    pkg:
+      - codeblocks
+      - codeblocks-contrib
+      - gnome-terminal  # Required for proper terminal paste support
+
+# Fix terminal paste issue by switching from xterm to gnome-terminal
+- name: create codeblocks config directory
+  file:
+    path: /home/contestant/.config/codeblocks
+    state: directory
+    owner: contestant
+    group: contestant
+    mode: '0755'
+
+- name: configure codeblocks default settings
+  copy:
+    dest: /home/contestant/.config/codeblocks/default.conf
+    owner: contestant
+    group: contestant
+    mode: '0644'
+    content: |
+      <?xml version="1.0" encoding="UTF-8" standalone="yes" ?>
+      <CodeBlocksConfig version="1">
+        <app>
+          <environment>
+            <!-- Fix terminal paste issue: Use gnome-terminal instead of xterm -->
+            <terminal_to_launch>gnome-terminal --wait --</terminal_to_launch>
+            
+            <!-- Disable splash screen for faster startup -->
+            <show_splash_screen>0</show_splash_screen>
+            
+            <!-- Disable tips dialog -->
+            <show_tips>0</show_tips>
+            
+            <!-- Auto-save settings -->
+            <settings_save>1</settings_save>
+            
+            <!-- Enable auto-save to protect against crashes -->
+            <auto_save>1</auto_save>
+            <auto_save_interval>5</auto_save_interval>
+            
+            <!-- Single instance mode to reduce window management issues -->
+            <single_instance>1</single_instance>
+          </environment>
+          
+          <editor>
+            <!-- Enable line numbers -->
+            <show_line_numbers>1</show_line_numbers>
+            
+            <!-- Tab settings -->
+            <tab_size>4</tab_size>
+            <use_tab>0</use_tab>
+            <tab_indents>1</tab_indents>
+            
+            <!-- Auto-indent -->
+            <auto_indent>1</auto_indent>
+            <smart_indent>1</smart_indent>
+            
+            <!-- Brace completion -->
+            <brace_completion>1</brace_completion>
+            
+            <!-- Show whitespace -->
+            <show_white_space>0</show_white_space>
+          </editor>
+          
+          <compiler>
+            <!-- Use GCC 14 by default -->
+            <default_compiler>gcc</default_compiler>
+          </compiler>
+        </app>
+      </CodeBlocksConfig>
+
+# Create a global configuration template
+- name: create global codeblocks config template
+  file:
+    path: /etc/skel/.config/codeblocks
+    state: directory
+    mode: '0755'
+
+- name: create global codeblocks default config
+  copy:
+    dest: /etc/skel/.config/codeblocks/default.conf
+    mode: '0644'
+    content: |
+      <?xml version="1.0" encoding="UTF-8" standalone="yes" ?>
+      <CodeBlocksConfig version="1">
+        <app>
+          <environment>
+            <terminal_to_launch>gnome-terminal --wait --</terminal_to_launch>
+            <show_splash_screen>0</show_splash_screen>
+            <show_tips>0</show_tips>
+            <settings_save>1</settings_save>
+            <auto_save>1</auto_save>
+            <auto_save_interval>5</auto_save_interval>
+            <single_instance>1</single_instance>
+          </environment>
+        </app>
+      </CodeBlocksConfig>
+
+# Create a prominent warning file about the crash issue
+- name: create codeblocks crash warning
+  copy:
+    dest: /home/contestant/Desktop/⚠️-CodeBlocks-IMPORTANT.txt
+    owner: contestant
+    group: contestant
+    mode: '0644'
+    content: |
+      ⚠️⚠️⚠️ CODE::BLOCKS CRASH WARNING ⚠️⚠️⚠️
+      ==========================================
+      
+      CRITICAL: Moving duplicate windows WILL crash Code::Blocks!
+      
+      This is a known bug in wxWidgets on Linux that cannot be fixed
+      without recompiling Code::Blocks from source.
+      
+      TO AVOID CRASHES:
+      -----------------
+      ❌ DO NOT drag/move multiple Code::Blocks windows
+      ❌ DO NOT drag tabs to create new windows
+      ❌ DO NOT tile/arrange multiple Code::Blocks windows
+      
+      ✅ DO use single-window mode
+      ✅ DO maximize the main window
+      ✅ DO save frequently (Ctrl+S)
+      ✅ DO use File → Save All before any risky operations
+      
+      Auto-save is enabled (every 5 minutes) to protect your work.
+      
+      See CodeBlocks-Tips.txt for full usage guide.
+
+# Create a README with usage tips
+- name: create codeblocks usage guide
+  copy:
+    dest: /home/contestant/Desktop/CodeBlocks-Tips.txt
+    owner: contestant
+    group: contestant
+    mode: '0644'
+    content: |
+      Code::Blocks Usage Tips
+      ========================
+      
+      TERMINAL PASTING:
+      -----------------
+      The terminal has been configured to use gnome-terminal for proper paste support.
+      
+      To paste in the terminal:
+      - Use: Ctrl+Shift+V (NOT Ctrl+V)
+      - Or: Right-click → Paste
+      - Or: Shift+Insert
+      
+      To copy from terminal:
+      - Use: Ctrl+Shift+C (NOT Ctrl+C)
+      - Or: Select text and it auto-copies
+      
+      STABILITY TIPS (IMPORTANT!):
+      ----------------------------
+      ⚠️  KNOWN CRASH ISSUE: Moving duplicate windows may crash Code::Blocks!
+      
+      This is a known wxWidgets bug on Linux. To avoid crashes:
+      
+      1. **DO NOT drag/move multiple windows at once**
+      2. **Close duplicate windows instead of moving them**
+      3. **Use Window menu instead of dragging tabs**
+      4. **Save frequently** (Ctrl+S or File → Save All)
+      
+      If Code::Blocks freezes:
+      - Try Ctrl+S to save before force-closing
+      - Your auto-save may have preserved recent work
+      - Restart Code::Blocks and recover from auto-save
+      
+      Workarounds:
+      - Use single-window mode when possible
+      - Maximize windows instead of tiling them
+      - Use keyboard shortcuts instead of mouse dragging
+      - Keep important files saved to external partition
+      
+      SHORTCUTS:
+      ----------
+      - Build: Ctrl+F9
+      - Run: Ctrl+F10
+      - Build & Run: F9
+      - Debug: F8
+      - Step Over: F7
+      - Step Into: Shift+F7
+      
+      COMPILER:
+      ---------
+      Code::Blocks is configured to use GCC 14 (matching ICPC 2025 standards).
+      Your code will compile the same way as in DOMjudge.
