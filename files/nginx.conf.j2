@@ -2,8 +2,49 @@ server {
     listen 80;
     server_name localhost;
 
+    # Handle static assets WITHOUT authentication
+    location ~* \.(css|js|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot|map)$ {
+        proxy_pass http://{{ domserver_ip_address }};
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        # Add caching for performance
+        expires 5h;
+        add_header Cache-Control "public, immutable";
+    }
+
+    # Allow BAPCtool without authentication
+    location ^~ /bapctool/ {
+        proxy_pass http://{{ domserver_ip_address }};
+        proxy_set_header Host             $host;
+        proxy_set_header X-Real-IP        $remote_addr;
+        proxy_set_header X-Forwarded-For  $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        auth_basic off;
+    }
+
+
+    # Handle API endpoints and sensitive paths WITH authentication  
+    location ~ ^/(api/|jury/|admin/) {
+        # Your existing authentication logic
+        if ($remote_addr = 127.0.0.1) {
+            proxy_pass http://{{ domserver_ip_address }};
+            break;
+        }
+        if ($http_authorization = "Bearer {{ auth_token }}") {
+            proxy_pass http://{{ domserver_ip_address }};
+            break;
+        }
+        if ($http_authorization = "Basic {{ judgehost_auth_token }}") {
+            proxy_pass http://{{ domserver_ip_address }};
+            break;
+        }
+        return 401;
+    }
+
+    #allow localhost or authorized callers, else 401
     location / {
-        # Allow requests from localhost without authorization
         if ($remote_addr = 127.0.0.1) {
             proxy_pass http://{{ domserver_ip_address }};
             break;
