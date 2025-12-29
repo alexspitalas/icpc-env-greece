@@ -5,7 +5,7 @@
     pkg:
       - python3
       - pypy3
-      - python3-doc     # 37.2 mb
+      - python3-doc # 37.2 mb
       - pypy3-doc # 5mb
       - python-is-python3
 
@@ -30,7 +30,7 @@
             value:
               name: PyPy3 Documentation
               id: pypy3
-              path: /usr/share/doc/pypy3-doc/html
+              path: /usr/share/doc/pypy3/html
               index: index.html
       register: updated
     - set_fact:

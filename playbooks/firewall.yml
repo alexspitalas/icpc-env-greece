@@ -6,6 +6,18 @@
       - squid-openssl
     state: present
 
+- name: Create Squid ACL from allowed_domains
+  copy:
+    dest: /etc/squid/acl_allowed_domains.txt
+    mode: '0644'
+    content: |
+      # Auto-generated from group_vars/all
+      {% for domain in allowed_domains %}
+      .{{ domain }}
+      {% endfor %}
+
+  notify: restart squid
+
 - name: configure squid
   template: src=files/squid/squid.conf.j2 dest=/etc/squid/squid.conf
   notify: restart squid
@@ -58,3 +70,4 @@
   lineinfile: dest=/etc/ufw/before.rules line="-I ufw-before-output -m owner --uid-owner contestant -j REJECT" insertbefore="^# don't delete the 'COMMIT' line" state=present
 - name: Allow the contestant user(and others) to talk to localhost from localhost). Fixes issue with intellij/eclipse compilation/debugging.
   lineinfile: dest=/etc/ufw/before.rules line="-I ufw-before-output -s 127.0.0.1 -d 127.0.0.1 -j ACCEPT" insertafter="uid-owner contestant -j REJECT" state=present
+

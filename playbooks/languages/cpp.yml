@@ -1,11 +1,34 @@
 ---
+# Add G++ 14 repository for ICPC 2025 compliance
+- name: enable universe repository
+  command: add-apt-repository -y universe
+  become: yes
+
+- name: update apt cache
+  apt:
+    update_cache: yes
+
+- name: add gcc-14 repository
+  apt_repository:
+    repo: ppa:ubuntu-toolchain-r/test
+    state: present
+    update_cache: yes
+
 - name: cpp
   apt:
     state: present
     pkg:
-      - g++
+      - g++-14
+      - g++  # Keep default g++ for compatibility
       - stl-manual      # 2.5mb
       - unzip # for dealing with docs
+
+- name: set g++-14 as default
+  alternatives:
+    name: g++
+    path: /usr/bin/g++-14
+    link: /usr/bin/g++
+    priority: 100
 
 # From https://en.cppreference.com/w/Cppreference:Archives
 - name: create directories
@@ -13,16 +36,15 @@
     state: directory
     path: "{{ item }}"
   with_items:
-    - /opt/cppreference-docs
+    - /opt/cpp-docs
     - /opt/libc-manual
-- name: cppreference.com offline docs
-  unarchive:
-    src: files/html_book_20190607.zip
-    dest: /opt/cppreference-docs
+
+- name: cpp reference docs 
+  command: curl -o /opt/cpp-docs/tutorial.pdf https://cplusplus.com/files/tutorial.pdf
 
 - name: libc reference docs
   unarchive:
-    src: https://www.gnu.org/software/libc/manual/html_node/libc-html_node.tar.gz
+    src: https://snapshots.sourceware.org/glibc/trunk/latest/manual/libc-html_node.tar.xz
     dest: /opt/libc-manual
     remote_src: true # to get it to download from the internet
 
@@ -36,12 +58,6 @@
               id: stl_docs
               path: /usr/share/doc/stl-manual/html
               index: index.html
-          - path: "lang_docs['c/cpp reference']"
-            value:
-              name: cppreference.com
-              id: cpp_reference
-              path: /opt/cppreference-docs/reference
-              index: en/index.html
           - path: "lang_docs['glibc manual']"
             value:
               name: GNU c library (glibc) manual
@@ -50,4 +66,7 @@
               index: index.html
       register: updated
     - set_fact:
-        lang_docs: "{{ updated.lang_docs }}"
+        lang_docs: "{{ updated.lang_docs }}"    
+    
+
+

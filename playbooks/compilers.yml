@@ -14,6 +14,9 @@
     loop_control:
       loop_var: language
 
+  - name: make sure web dir exists
+    file: state=directory path=/opt/localwww
+
   - name: dump the lang_docs fact
     debug:
       var: lang_docs
@@ -26,4 +29,10 @@
     loop: "{{ lang_docs | dict2items }}"
 
   - name: create simple index page for links to docs
-    template: src=files/language-docs.html.j2 dest=/opt/localwww/index.html
+    template: src=files/language-docs.html.j2 dest=/opt/localwww/index.html  
+    
+  - name: include various languages
+    include_tasks: "languages/{{ language }}.yml"
+    loop: "{{ languages }}"
+    loop_control:
+      loop_var: language

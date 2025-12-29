@@ -13,10 +13,6 @@
       {{ l }}
       {% endfor %}
 
-- name: write out the config url
-  copy:
-    dest: /icpc/config_url_base
-    content: "{{ config_url }}"
 
 - name: write out the contest id (if specified)
   copy:
@@ -43,6 +39,38 @@
   community.general.timezone:
     name: "{{ icpc_timezone }}"
 
+#- name: disable apt proxy temporarily
+#  shell: |
+#    unset http_proxy https_proxy HTTP_PROXY HTTPS_PROXY
+#    apt-key adv --keyserver keyserver.ubuntu.com --recv-keys YOUR_KEY || true
+#  environment:
+#    http_proxy: ""
+#    https_proxy: ""
+#    HTTP_PROXY: ""
+#    HTTPS_PROXY: ""
+
+#- name: clear apt proxy configuration
+#  file:
+##    path: /etc/apt/apt.conf.d/proxy.conf
+ #   state: absent
+#  ignore_errors: yes
+
+#- name: update apt cache without proxy
+#  apt:
+#    update_cache: yes
+#  environment:
+#    http_proxy: ""
+#    https_proxy: ""
+
+#script to find statistics about ides
+- name: copy s.py to /usr/local/bin
+  copy:
+    src: files/scripts/s.py
+    dest: /usr/local/bin/s.py
+    owner: root
+    group: root
+    mode: '0755'
+
 # ICPC tools we need
 - name: install ICPC tools we need
   apt:
@@ -62,33 +90,22 @@
       - wmctrl # can set always on top, plus check if it's still the active window and restart it if not (e.g. ctrl+alt+left/right swap desktops)
       - xdotool # to detect if it's still on top/other things?
       - python3-xlib  # maybe we'll write our own xorg fullscreen thing to replace the above 3 things...
+  environment:
+    http_proxy: ""
+    https_proxy: ""
 
 - name: stop/disable cups-browsed from autodiscovering printers
   service: name=cups-browsed state=stopped enabled=no
 
-- name: copy local git repos to server
-  synchronize:
-    use_ssh_args: yes
-    src: home_dirs/{{item}}/.git
-    dest: /tmp/{{item}}.git
-  with_items:
-    - contestant
-    - admin
-
-- name: remove existing skel directory
-  file: path=/etc/skel state=absent
-- name: setup user skeleton directory
-  git: dest=/etc/skel repo=file:///tmp/contestant.git
-
+- name: copy icpc default wallpaper
+  copy: dest=/icpc/wallpaper.png src=files/wallpaper.png
+- name: Copy autostart desktop entry to set wallpaper
+  copy: src=files/icpc_autostart.desktop dest=/etc/xdg/autostart/icpc_autostart.desktop
 
 - name: create icpcadmin group
   group: name='icpcadmin' state='present'
 - name: create icpcadmin user
   user: name='icpcadmin' comment="ICPC Local Admin" group='icpcadmin' groups='sudo,adm,lpadmin' password='{{ icpcadmin_pass | password_hash('sha512') }}' shell='/bin/bash'
-- name: setup icpcadmin home directory
-  git: dest=/home/icpcadmin repo=file:///tmp/admin.git
-  become: yes
-  become_user: icpcadmin
 
 - name: create contestant group
   group: name='contestant' state='present'
@@ -156,6 +173,14 @@
 - name: disable proxy for icpcadmin
   copy: src=files/pam_environment dest=/home/icpcadmin/.pam_environment
 
+- name: ensure polkit local authority directory exists
+  file:
+    path: /etc/polkit-1/localauthority/50-local.d
+    state: directory
+    mode: '0755'
+    owner: root
+    group: root
+    
 - name: use polkit to disable mounting anything
   copy: src=files/99-deny-polkit-mount.pkla dest=/etc/polkit-1/localauthority/50-local.d/disable-mount.pkla mode=0644 owner=root group=root
 
@@ -202,8 +227,19 @@
       opts="defaults,uid=contestant,gid=contestant"
       state=present
 
-- name: write the homepage to a file so we can make sure access works in the self_test
-  copy:
-    dest: /icpc/config_homepage
-    content: |
-      {{ firefox_policies.Homepage.URL }}
+- name: Fix CLion config ownership for contestant user
+  file:
+    path: "/home/contestant/.config"
+    state: directory
+    recurse: yes
+    owner: contestant
+    group: contestant
+
+- name: Ensure .config directory has correct permissions
+  file:
+    path: "/home/contestant/.config"
+    state: directory
+    mode: '0755'
+    owner: contestant
+    group: contestant
+    recurse: yes

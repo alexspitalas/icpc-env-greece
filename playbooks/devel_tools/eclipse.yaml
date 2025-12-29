@@ -1,6 +1,11 @@
 ---
+  - name: install unzip so we can extract eclipse
+    apt:
+      pkg: unzip
+      state: present
+  
   - name: install eclipse(64bit)
-    unarchive: src=files/eclipse-java-2022-12-R-linux-gtk-x86_64.tar.gz dest=/opt creates=/opt/eclipse
+    unarchive: src=files/eclipse-java-2025-09-R-linux-gtk-x86_64.tar.gz dest=/opt creates=/opt/eclipse
 
   - name: eclipse shortcut
     copy:
@@ -63,14 +68,13 @@
         # disable error reporting(It's usually a pop up on first run)
         org.eclipse.epp.logging.aeri.ui/action=IGNORE
         org.eclipse.epp.logging.aeri.ui/configured=true
+      
+        # default to jdk 21 compliance level (updated to match ICPC 2025 standards)
+        org.eclipse.jdt.core/org.eclipse.jdt.core.compiler.source=21
+        org.eclipse.jdt.core/org.eclipse.jdt.core.compiler.compliance=21
+        org.eclipse.jdt.core/org.eclipse.jdt.core.compiler.codegen.targetPlatform=21
 
-        # default to jdk 11 compliance level (otherwise it's 17 for eclipse 2021-12)
-        org.eclipse.jdt.core/org.eclipse.jdt.core.compiler.source=11
-        org.eclipse.jdt.core/org.eclipse.jdt.core.compiler.compliance=11
-        org.eclipse.jdt.core/org.eclipse.jdt.core.compiler.codegen.targetPlatform=11
-
-        # set the available jdks...(this from export/import...)
-        org.eclipse.jdt.launching/org.eclipse.jdt.launching.PREF_VM_XML=<?xml version\="1.0" encoding\="UTF-8" standalone\="no"?>\n<vmSettings defaultVM\="57,org.eclipse.jdt.internal.debug.ui.launcher.StandardVMType13,1643424725527">\n    <vmType id\="org.eclipse.jdt.internal.debug.ui.launcher.StandardVMType">\n        <vm id\="1643424421549" name\="jre" path\="/opt/eclipse/plugins/org.eclipse.justj.openjdk.hotspot.jre.full.linux.x86_64_17.0.1.v20211116-1657/jre"/>\n        <vm id\="1643424725527" name\="java-1.11.0-openjdk-amd64" path\="/usr/lib/jvm/java-1.11.0-openjdk-amd64"/>\n        <vm id\="1643424725530" name\="java-11-openjdk-amd64" path\="/usr/lib/jvm/java-11-openjdk-amd64"/>\n        <vm id\="1643424725531" name\="default-java" path\="/usr/lib/jvm/default-java"/>\n    </vmType>\n    <vmType id\="org.eclipse.jdt.internal.debug.ui.launcher.StandardVMType">\n        <vm id\="1643424421549" name\="jre" path\="/opt/eclipse/plugins/org.eclipse.justj.openjdk.hotspot.jre.full.linux.x86_64_17.0.1.v20211116-1657/jre"/>\n        <vm id\="1643424725527" javadocURL\="https\://docs.oracle.com/en/java/javase/11/docs/api/" name\="java-1.11.0-openjdk-amd64" path\="/usr/lib/jvm/java-1.11.0-openjdk-amd64"/>\n        <vm id\="1643424725530" javadocURL\="https\://docs.oracle.com/en/java/javase/11/docs/api/" name\="java-11-openjdk-amd64" path\="/usr/lib/jvm/java-11-openjdk-amd64"/>\n        <vm id\="1643424725531" javadocURL\="https\://docs.oracle.com/en/java/javase/11/docs/api/" name\="default-java" path\="/usr/lib/jvm/default-java"/>\n    </vmType>\n</vmSettings>\n
-
+        # set the available jdks - updated to Java 21 (this from export/import...)
+        org.eclipse.jdt.launching/org.eclipse.jdt.launching.PREF_VM_XML=<?xml version\="1.0" encoding\="UTF-8" standalone\="no"?>\n<vmSettings defaultVM\="21openjdk,org.eclipse.jdt.internal.debug.ui.launcher.StandardVMType,1732623200000">\n    <vmType id\="org.eclipse.jdt.internal.debug.ui.launcher.StandardVMType">\n        <vm id\="21openjdk" javadocURL\="https\://docs.oracle.com/en/java/javase/21/docs/api/" name\="java-21-openjdk-amd64" path\="/usr/lib/jvm/java-21-openjdk-amd64"/>\n        <vm id\="default-java" javadocURL\="https\://docs.oracle.com/en/java/javase/21/docs/api/" name\="default-java" path\="/usr/lib/jvm/default-java"/>\n    </vmType>\n</vmSettings>\n
   - name: fixup the eclipse.ini file to use our custom configuration
     lineinfile: dest=/opt/eclipse/eclipse.ini insertafter="-vmargs" line="-Declipse.pluginCustomization=/opt/eclipse/eclipse_plugincustomization.ini"

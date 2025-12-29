@@ -16,6 +16,28 @@
 
     - name: copy updated pam sudo config so it reads .pam_environment
       copy: src=files/pam_sudo dest=/etc/pam.d/sudo
+    
+    - name: copy Xresources
+      copy:
+        src: files/Xresources
+        dest: /etc/skel/.Xresources
+
+    - name: copy DocumentationHTML
+      copy:
+        src: files/documentHtml
+        dest: /htmlfile/
+
+    - name: ensure Xresources is merged on session start (.xsessionrc)
+      copy:
+        dest: /etc/skel/.xsessionrc
+        content: |
+          [ -f ~/.Xresources ] && xrdb -merge ~/.Xresources
+
+    - name: ensure Xresources is merged on session start (.xprofile)
+      copy:
+        dest: /etc/skel/.xprofile
+        content: |
+          [ -f ~/.Xresources ] && xrdb -merge ~/.Xresources
 
 
     - name: disable fsync for dpkg
@@ -78,20 +100,20 @@
     - import_tasks: 'playbooks/gui.yml'
 
     - import_tasks: 'playbooks/reverseproxy.yml'
+    - import_tasks: 'playbooks/proxy.yaml'
     - import_tasks: 'playbooks/compilers.yml'
     - import_tasks: 'playbooks/devel_tools.yml'
-
+  #  - import_tasks: 'roles/jetbrains_ides/tasks/main.yml'
     - import_tasks: 'playbooks/icpc.yml'
     - import_tasks: 'playbooks/vmtouch.yml'
+    - import_tasks: 'playbooks/system.yml'
+    - import_tasks: 'playbooks/desktop.yml'
 
     - import_tasks: 'playbooks/firewall.yml'
-    - import_tasks: 'playbooks/system.yml'
 
     # Management related things
-    - import_tasks: 'playbooks/ansible-pull.yml'
-    - import_tasks: 'playbooks/reversetunnel.yml'
-    - import_tasks: 'playbooks/vpn.yml'
-    - import_tasks: 'playbooks/monitoring.yml'
+    #- import_tasks: 'playbooks/ansible-pull.yml'
+    #- import_tasks: 'playbooks/reversetunnel.yml'
 
     - name: autoremove/autoclean apt
       block:
@@ -117,6 +139,17 @@
     #     rm -f /empty
     #     sync
 
+    - name: Add delete-user alias for admin
+      lineinfile:
+        path: /home/icpcadmin/.bashrc
+        line: 'alias delete-user="sudo /icpc/scripts/deleteUser.sh"'
+        create: yes
+        owner: icpcadmin
+        group: icpcadmin
+        mode: '0644'
+
+    
+
   handlers:
     - name: clear user password
       command: passwd -d contestant
@@ -137,3 +170,6 @@
       ansible.builtin.service:
         name: nginx
         state: reloaded
+
+    
+

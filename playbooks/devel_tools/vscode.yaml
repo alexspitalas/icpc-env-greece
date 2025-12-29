@@ -8,12 +8,13 @@
     state: present
     pkg: code
 
+# Install extensions:
 - name: make sure vscode extension directory exists
   file: path=/opt/vscode/extensions state=directory
+  
 - name: vscode extensions
   shell: code --extensions-dir /opt/vscode/extensions --user-data-dir /opt/vscode --no-sandbox --install-extension {{ item }}
   loop: "{{ vscode_extensions }}"
-
 
 - name: create a script to symlink our extensions
   copy:

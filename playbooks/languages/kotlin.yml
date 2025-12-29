@@ -3,8 +3,19 @@
   apt:
     pkg: unzip
     state: present
-- name: install kotlin
-  unarchive: src=files/kotlin-compiler-1.7.10.zip dest=/opt creates=/opt/kotlinc
+
+- name: Download Kotlin compiler
+  get_url:
+    url: https://github.com/JetBrains/kotlin/releases/download/v2.2.0/kotlin-compiler-2.2.0.zip
+    dest: /tmp/kotlin-compiler-2.2.0.zip
+    mode: '0644'
+
+- name: Install Kotlin
+  unarchive:
+    src: /tmp/kotlin-compiler-2.2.0.zip
+    dest: /opt
+    remote_src: yes
+    
 - name: create symlinks for kotlin
   file:
     src: /opt/kotlinc/bin/{{ binary_name }}
@@ -18,7 +29,6 @@
     - kotlinc
     - kotlinc-js
     - kotlinc-jvm
-    - kotlin-dce-js
 
 # kotlin pdf doc (single file)
 - name: create directory for kotlin docs

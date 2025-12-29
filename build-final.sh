@@ -1,10 +1,11 @@
 #!/bin/bash
+
 set -xeuo pipefail
 
 # Default group for the VM in ansible. This lets you use group_vars/$VARIANT for site specific configuration
 VARIANT=${1:-all}
 
-SSHPORT=2222
+SSHPORT=5222
 SSH_BUILD_KEY="configs/imageadmin-ssh_key"
 SSH_ICPCADMIN_KEY="files/secrets/icpcadmin@contestmanager"
 PIDFILE="tmp/qemu.pid"
@@ -44,7 +45,7 @@ function waitforssh() {
   while [[ $X -lt $TIMEOUT ]]; do
     let X+=1
     set +e
-    OUT=$(ssh -i $SSH_BUILD_KEY -o BatchMode=yes -o ConnectTimeout=1 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o IdentitiesOnly=yes  imageadmin@localhost -p$SSHPORT echo "ok" 2>/dev/null)
+    OUT=$(ssh -i $SSH_BUILD_KEY -o BatchMode=yes -o ConnectTimeout=1 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o IdentitiesOnly=yes  imageadmin@localhost -p $SSHPORT echo "ok" 2>/dev/null)
     set -e
     if [[ "$OUT" == "ok" ]]; then
       ALIVE=1
@@ -64,7 +65,8 @@ function waitforssh() {
   fi
 }
 
-qemu-system-x86_64 -smp 1 -m 1024 -drive file="$IMGFILE",index=0,media=disk,format=raw -global isa-fdc.driveA= --enable-kvm -net user,hostfwd=tcp::$SSHPORT-:22 -net nic --daemonize --pidfile $PIDFILE -vnc :0 -vga qxl -spice port=5901,disable-ticketing -usbdevice tablet
+qemu-system-x86_64 -smp 1 -m 1024 -drive file="$IMGFILE",index=0,media=disk,format=raw --enable-kvm -net user,hostfwd=tcp::$SSHPORT-:22 -net nic --daemonize --pidfile $PIDFILE -vnc :0 -vga qxl -spice port=5901,disable-ticketing=on -usbdevice tablet -cpu host
+#qemu-system-x86_64 -smp 1 -m 1024 -drive file="$IMGFILE",index=0,media=disk,format=raw -global isa-fdc.driveA= --enable-kvm -net user,hostfwd=tcp::$SSHPORT-:22 -net nic --daemonize --pidfile $PIDFILE -vnc :0 -vga qxl -spice port=5901,disable-ticketing -usbdevice tablet
 
 ALIVE=0
 waitforssh
@@ -81,8 +83,9 @@ ANSIBLE_HOST_KEY_CHECKING=False time ansible-playbook -i $INVENTORY_FILE  --ssh-
 rm -f $INVENTORY_FILE
 
 ssh -i $SSH_ICPCADMIN_KEY -o BatchMode=yes -o ConnectTimeout=1 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o IdentitiesOnly=yes  icpcadmin@localhost -p$SSHPORT sudo reboot
+
 # Wait 5 seconds for reboot to happen so we don't ssh back in before it actually reboots
-sleep 5
+sleep 20
 ALIVE=0
 waitforssh
 

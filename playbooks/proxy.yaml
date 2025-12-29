@@ -1,0 +1,22 @@
+---
+- name: Install tinyproxy
+  apt:
+    pkg:
+      - tinyproxy
+    state: present
+
+- name: Append authorization header
+  lineinfile:
+    path: /etc/tinyproxy/tinyproxy.conf
+    line: 'AddHeader "Authorization" "Bearer {{ auth_token }}"'
+
+- name: Make tinyproxy conf not readable by others
+  file:
+    path: /etc/tinyproxy/tinyproxy.conf
+    mode: '0600'
+
+- name: Append http_proxy to /etc/environment
+  lineinfile:
+    path: /etc/environment
+    line: 'http_proxy="http://localhost:8888/"'
+

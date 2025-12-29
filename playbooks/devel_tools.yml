@@ -3,11 +3,8 @@
     apt:
       state: present
       pkg:
-        - vim-gtk3       # graphical vim
-        - emacs          # emacs(with x)
-        - gedit          # Simple gnome text editor w/ syntax highlighting
-        - gdb
-        - zsh            # a different shell people might like more (~20MiB)
+        - vim       
+        - gedit     # Simple gnome text editor w/ syntax highlighting
 
   - name: install codeblocks
     when: "'codeblocks' in devtools"
@@ -19,11 +16,11 @@
 
   - name: install vscode
     when: "'vscode' in devtools"
-    include_tasks: 'devel_tools/vscode.yml'
+    include_tasks: 'devel_tools/vscode.yaml'
 
   - name: install netbeans
     when: "'netbeans' in devtools"
-    include_tasks: 'devel_tools/netbeans.yml'
+    include_tasks: 'devel_tools/netbeans.yaml'
 
   - name: install geany
     when: "'geany' in devtools"
@@ -33,38 +30,11 @@
         - geany
         - geany-plugins
 
-  - include_tasks: 'devel_tools/eclipse.yml'
+  - include_tasks: 'devel_tools/eclipse.yaml'
     when: "'eclipse' in devtools"
-
-  - include_tasks: 'devel_tools/intellij.yml'
+  - name: Import JetBrains role
+    import_role:
+      name: 'jetbrains_ides'
     when: ('intellij-idea' in devtools) or ('intellij-clion' in devtools) or ('intellij-pycharm' in devtools)
 
-  - name: install monodevelop
-    when: "('monodevelop' in devtools)"
-    block:
-    - name: key for monodevelop apt repo
-      apt_key: keyserver=keyserver.ubuntu.com id=3FA7E0328081BFF6A14DA29AA6A19B38D3D831EF
-    - name: apt repo for monodevelop
-      apt_repository: repo="deb https://download.mono-project.com/repo/ubuntu stable-bionic main" update_cache=yes
-    - name: install monodevelop
-      apt:
-        state: present
-        pkg:
-          # Monodevelop and friends: 140mb
-          - monodevelop
-          #- monodevelop-debugger-gdb
-
-  # - name: clone spacemacs
-  #   git: dest=/opt/spacemacs/emacs.d repo=https://github.com/syl20bnr/spacemacs
-  # - name: create some instructions for spacemacs
-  #   copy:
-  #     dest: /opt/spacemacs/readme.md
-  #     content: |
-  #       You can find spacemacs downloaded from github in /opt/spacemacs/emacs.d
-  #       To use it, you probably want to do something like this:
-  #       ```
-  #       cp -a /opt/spacemacs/emacs.d ~/.emacs.d
-  #       ```
-  # This seems not to really work, since on startup of spacemacs it wants to update/download a bunch of packages...
-  # It's possible to mirror the pacakges and stuff(see https://github.com/d12frosted/elpa-mirror), but it's around 1.1GiB
-  # Probably best to implement some kind of trusted mirror site and allow teams access to that(also for docs)
+  

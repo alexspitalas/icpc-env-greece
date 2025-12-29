@@ -2,133 +2,134 @@
 # Configure Timerzone
 icpc_timezone: 'Europe/Athens'
 
-# They Configure The Home Directories of the two users.
-git_user_home: 'https://github.com/icpc-environment/fuzzy-octo-dangerzone.git'
-git_admin_home: 'https://github.com/icpc-environment/tripping-computing-machine.git'
-
-# [Sfikas] Configure the ICPC admin password. Is this the system admin password or the password of the
+# Configure the ICPC admin password. Is this the system admin password or the password of the
 # Tool they use to host the contest. Probably they create another user, apart from the team
 # That has access to the contest server.
 icpcadmin_pass: icpcadmin
 
-allowed_domains:
-    
-  # [Sfikas] Access to the Site of the Competition of The Sutheast USA Regional Contest
-  # They have also host the Documentation for the supported languages in their 
-  # WebSite -- For Us we could simplify with the Following:
-  - https://algoforum.upatras.gr/                                   # Do we also have external dependencies ?? 
-  - https://en.cppreference.com/w/c/language
-  - https://en.cppreference.com/w/
-  - https://docs.oracle.com/en/java/javase/11/docs/api/index.html   # Imporant Change to the java Version we will use.
-  - https://docs.python.org/3/
-  - https://chat.openai.com/                                        # jk jk :)
-  # IMPORTANT ADD THE IP/DOMAIN OF THE CONTEST SERVER IN EACH CITY
-
-  # - seusa.vanb.org = Their Site
-  - seusa21-d1.kattis.com
-  - seusa21-d2.kattis.com
-
-  # sigh...kattis has a bunch of external dependencies
-  - cdnjs.cloudflare.com
-  - cdn.jsdelivr.net
-  - ajax.googleapis.com
-  - fonts.gstatic.com
-  - licensebuttons.net
-
-  # - docs.cloudcontest.org
-
-allowed_urls: []
-  # Maybe host language docs here instead? Makes for less on the image itself
+#The auth token that is used to allow traffic to the server
+auth_token: "1234"
 
 # urls we are configured to send autologin credentials to
 # TODO: allow https as well :/
 squid_autologin_urls: []
   # - ^http://ser2019.cloudcontest.org/login
+allowed_domains:
+  - cppreference.com
+  - docs.python.org
+  - docs.oracle.com
+  - domjudge.org
+  - grcpc.gr
+  - seerc2025.algotester.com
+  - seerc.euc.icpc.global
+  - scoreboard-seerc.icpc.global
+  - judge-seerc.icpc.global
 
-# After this date the restrictions for allowed_domains will not apply
-# Must be period separated in the format "YYYY.MM.DD"
-# [Sfikas] Set this to 2077 or 2049 or 2099
-squid_unblock_date: 2022.03.06
 
-# [Sfikas] Wireguard = Delete this.
-# this is the wireguard server's wireguard interface ip address
-# i.e. the address we can use when we want to talk to the vpn server
-contestmanager_ip: fd00:a0a8:34d:2a00::1
 
-# [Sfikas] Delete this as well
-# This is the config server used by the icpc_setup script. It contains sites, teams, and printer configurations.
-# See the readme for more information on what files this server needs to return
-config_url: http://configs.cloudcontest.org
 
-# [Sfikas] Deleteeee? or change the host ?
-# could be contestmanager.icpcnet.internal and run over the wireguard vpn
-# not sure which is likely to be more reliable...
-ansible_pull_host: icpc.cloudcontest.org # Not a real url ..... so Delete ? 
-ansible_pull_port: 443
-ansible_pull_path: ~/ansible
-
-# [Sfikas] We do not use WireGuard as the vpn.
-# The host details for the wireguard registration script. It connects over ssh to
-# this and expects the output of that ssh session to be a wireguard config file.
-# This is then loaded and wireguard started so the client connects to the VPN.
-wireguard_host: icpc.cloudcontest.org
-wireguard_client_user: wg_client
-wireguard_port: 443
-
-# Generate this using `wg genkey`, it is the server's wireguard private key
-wg_vpn_server_private_key: wEN5iYXA8M4JD3HIa17mhtDID3+/HQbLFGVN9USC9XE=
-# This is the external hostname that your management server resolves to
-wg_vpn_server_external_hostname: icpc.cloudcontest.org
-# This needs to match the externally visible ip address of your management server
-wg_vpn_server_external_ip: 0.1.2.3
-# the port wireguard will use (maybe change to 443 to help bypass firewalls)
-wg_vpn_server_wg_port: 51820
-wg_vpn_server_subnet: fd00:a0a8:34d:2a00::/64
-
-# [Sfikas] Delete ?
-# Maybe more accurately named "ssh tunnel host"
-jumpbox_host: icpc.cloudcontest.org
-
-# [Sfikas] This is fine as long as we understand how the languages are beeing set up.
+#This is fine as long as we understand how the languages are beeing set up.
 # Check the java version that is beeing downloaded
 languages:
   - c
   - cpp
   - java
-  - kotlin
   - python3
-  # - clojure
-  # - c-sharp
-  # - dart
-  # - d
-  # - elixir
-  # - erlang
-  # - fortran
-  # - f-sharp
-  # - gnu_ada
-  # - go
-  # - groovy
-  # - haskell
-  # - js
-  # - lua
-  # - nim
-  # - obj-c
-  # - ocaml
-  # - pascal
-  # - prolog
-  # - python2
-  # - ruby
-  # - rust
-  # - r
-  # - scala
+#  - kotlin
 
-# [Sfikas] No vscode ?
 devtools:
-  - intellij-idea
-  - intellij-clion
-  - intellij-pycharm
-  - eclipse
-  - geany
-  - netbeans
   - codeblocks
-  # - monodevelop
+  - geany
+  - vscode
+  - eclipse
+  - netbeans
+#  - intellij-idea
+#  - intellij-pycharm
+#  - intellij-clion
+
+
+vscode_extensions:
+  # C/C++
+  - ms-vscode.cpptools-extension-pack
+  # Python
+  - ms-python.python
+  - kevinrose.vsc-python-indent
+  - visualstudioexptteam.vscodeintellicode
+  # Java
+  - vscjava.vscode-java-pack
+  # Misc
+  - vscodevim.vim
+  - lfs.vscode-emacs-friendly
+  # Themes
+  - akamud.vscode-theme-onedark
+  - akamud.vscode-theme-onelight
+  - tgreen7.one-monokai-dark
+  - jprestidge.theme-material-theme
+
+# Firefox policies. Documented here:
+# https://mozilla.github.io/policy-templates/
+firefox_policies:
+  # Enable and lock the homepage
+  Homepage:
+    URL: "file:///htmlfile/documentHtml/index.html"
+    Locked: true
+    StartPage: homepage
+  # Add some bookmark entries (and always show the bookmarks toolbar)
+  DisplayBookmarksToolbar: true
+  Bookmarks:
+    - Title: "Programming Docs"
+      URL: "file:///opt/localwww/index.html"
+      Placement: "toolbar"
+    - Title: "Help Guide"
+      URL: "file:///htmlfile/documentHtml/index.html"
+      Placement: "toolbar"
+    - Title: "Domjudge"
+      URL: "http://judge-seerc.icpc.global"
+      Placement: "toolbar"
+    - Title: "algotester"
+      URL: "http://seerc2025.algotester.com"
+      Placement: "toolbar"
+    - Title: "Global Scoreboard"
+      URL: "http://scoreboard-seerc.icpc.global"
+      Placement: "toolbar"
+#    - Title: GRCPC
+#      URL: "http://grcpc.gr"
+#      Placement: "toolbar"
+
+firefox_default_policies:
+  # Disable internet checking (it'll fail when the proxy is on so we want to avoid the notification banner)
+  CaptivePortal: false
+  # Prevent updating (shouldn't happen on linux, but we want to avoid it anyway)
+  DisableAppUpdate: true
+  # Prevent first run page/post update pages from showing up
+  OverrideFirstRunPage: ""
+  OverridePostUpdatePage: ""
+  # What it says on the tin. This is to prevent a banner on first start about what it's sharing
+  DisableTelemetry: true
+  # Disable DNS over HTTPS (this might get around filters/things)
+  DNSOverHTTPS:
+    Enabled: false
+  # Install the squid CA so it can mitm things/properly filter the network
+  Certificates: {
+    ImportEnterpriseRoots: true,
+    Install: ["/etc/squid/squidCA.crt"]
+  }
+
+  # Disable a bunch of random features we don't need
+  DisablePocket: true
+  DisableFirefoxStudies: true
+  DisableFirefoxAccounts: true
+  DisableFeedbackCommands: true
+  NewTabPage: false
+  NoDefaultBookmarks: true
+  DisableProfileImport: true
+
+  # Disable a bunch of messages
+  UserMessaging:
+    WhatsNew: false
+    ExtensionRecommendations: false
+    FeatureRecommendations: false
+    UrlbarInterventions: false
+    SkipOnboard: true
+    MoreFromMozilla: false
+    Locked: true

@@ -131,11 +131,11 @@ else
   print_ok
 fi
 
-if [ -f /usr/local/bin/wg_setup ]; then
-  print_check "Checking if the management VPN is alive"
-  ping -c1 contestmanager.icpcnet.internal >/dev/null 2>&1
-  check_return $?
-fi
+#if [ -f /usr/local/bin/wg_setup ]; then
+#  print_check "Checking if the management VPN is alive"
+#  ping -c1 contestmanager.icpcnet.internal >/dev/null 2>&1
+#  check_return $?
+#fi
 
 echo
 echo "${BLUE}Compiler Versions${RESET}"

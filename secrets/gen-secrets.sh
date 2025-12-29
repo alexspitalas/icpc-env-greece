@@ -51,9 +51,9 @@ ssh-keygen -s ./server_ca \
 	./icpcadmin@contestmanager
 
 # sign the jumpy key allowing the icpc machines to connect to the contestmanager machine (as jumpy, wg_client, or git)
-ssh-keygen -s ./server_ca \
-	-I "jumpy@icpc key" \
-	-n "jumpy,wg_client,git" \
-	./jumpy@icpc
-
-popd
+#ssh-keygen -s ./server_ca \
+#	-I "jumpy@icpc key" \
+#	-n "jumpy,wg_client,git" \
+#	./jumpy@icpc
+#
+#popd

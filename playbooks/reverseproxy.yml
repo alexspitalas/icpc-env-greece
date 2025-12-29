@@ -44,11 +44,3 @@
     state: link
   notify: reload nginx
 
-- name: update hosts file so we talk to the proxyserver instead of the real server
-  ansible.builtin.lineinfile:
-    path: /etc/hosts
-    line: "127.0.0.1	{{ item }}"
-    owner: root
-    group: root
-    mode: '0644'
-  loop: "{{ reverseproxy_sites.keys() }}"

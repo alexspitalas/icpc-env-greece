@@ -3,7 +3,7 @@
 # Creates the image -- Only uses USERDATA and METADATA
 
 # Settings
-ISO64="ubuntu-22.04.2-live-server-amd64.iso" # Changed it to 22.04.2 hopping that nothing will break
+ISO64="ubuntu-24.04-live-server-amd64.iso"
 OUT64="unattended-${ISO64}"
 IMG64="base-amd64.img"
 
@@ -51,13 +51,15 @@ function create_unattended_iso(){
   CONTENTSDIR="$TMPDIR/contents"
   rm -rf "$CONTENTSDIR"
   mkdir -p "$CONTENTSDIR"
-
+  echo "hello"
+  # Extract the efi partition out of the iso
   # Extract the efi partition out of the iso
   read -a EFI_PARTITION < <(parted -m $ISO unit b print | awk -F: '$1 == "2" { print $2,$3,$4}' | tr -d 'B')
-  dd if=$ISO of=$TMPDIR/efi.img skip=${EFI_PARTITION[0]} bs=1 count=${EFI_PARTITION[2]}
+  sudo dd if=$ISO of=$TMPDIR/efi.img skip=${EFI_PARTITION[0]} bs=1 count=${EFI_PARTITION[2]} ; sync
   # # this is basically /usr/lib/grub/i386-pc/boot_hybrid.img from grub-pc-bin package (we just skip the end bits which xorriso will recreate)
-  dd if=$ISO of=$TMPDIR/mbr.img bs=1 count=440
-
+  echo "1"
+  dd if=$ISO of=$TMPDIR/mbr.img bs=1 count=1 ; sync
+  echo "2"
 
   #Use bsdtar if possible to extract(no root required)
   if hash bsdtar 2>/dev/null; then
@@ -129,10 +131,12 @@ rm -f "output/$IMG"
 set -x
 qemu-img create -f qcow2 -o size="$IMGSIZE" "output/$IMG"
 qemu-system-x86_64 \
-  --enable-kvm -m 4096 -global isa-fdc.driveA= \
+  --enable-kvm -m 4096\
   -drive file="output/$IMG",index=0,media=disk,format=qcow2 \
   -cdrom $OUTISO -boot order=d \
   -net nic -net user,hostfwd=tcp::5222-:22,hostfwd=tcp::5280-:80 \
   -vga qxl -vnc :0 \
-  -usbdevice tablet
+  -usbdevice tablet \
+  -cpu host
 # -global isa-fdc.driveA= is used to disable floppy drive(gets rid of a warning message)
+echo "finished"

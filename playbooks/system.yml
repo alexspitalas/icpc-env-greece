@@ -37,11 +37,6 @@
 - name: systemd disable status messages on console
   copy: src=files/systemd-system.conf dest=/etc/systemd/system.conf
 
-- name: disable avahi-daemon (and socket), because we don't need mDNS
-  service: name={{ item }} state=stopped enabled=no
-  with_items:
-    - avahi-daemon.socket
-    - avahi-daemon.service
 
 - name: disable unattended upgrades/apt cache fetching
   copy:
@@ -58,3 +53,4 @@
         "policies":
         {{ firefox_default_policies|combine(firefox_policies)|to_nice_json }}
       }
+

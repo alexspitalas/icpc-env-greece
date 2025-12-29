@@ -1,0 +1,35 @@
+- name: install UFW as the iptables frontend
+  apt:
+    state: present
+    pkg:
+      - ufw
+
+- name: Enable ufw service
+  ufw: state=enabled logging=off 
+
+- name: Make firewall script executable
+  file:
+    path: /icpc/scripts/firewall.sh
+    mode: '0755'
+    owner: root
+    group: root
+    
+- name: Deploy icpc-firewall systemd unit
+  copy:
+    src: ../files/systemd/icpc-firewall.service
+    dest: /etc/systemd/system/icpc-firewall.service
+    owner: root
+    mode: '0644'
+
+- name: Reload systemd to recognize new service
+  command: systemctl daemon-reload
+
+- name: Enable icpc-firewall service
+  systemd:
+    name: icpc-firewall.service
+    enabled: yes
+    state: started
+
+- name: Execute firewall script
+  command: /icpc/scripts/firewall.sh
+

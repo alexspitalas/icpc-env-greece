@@ -1,6 +1,31 @@
 ---
+# Add GCC 14 repository for ICPC 2025 compliance
+- name: enable universe repository
+  command: add-apt-repository -y universe
+  become: yes
+  
+- name: update apt cache
+  apt:
+    update_cache: yes
+
+
+
+- name: add gcc-13 repository
+  apt_repository:
+    repo: ppa:ubuntu-toolchain-r/test
+    state: present
+    update_cache: yes
+
 - name: c
   apt:
     state: present
     pkg:
-      - gcc
+      - gcc-14
+      - gcc  # Keep default gcc for compatibility
+
+- name: set gcc-14 as default
+  alternatives:
+    name: gcc
+    path: /usr/bin/gcc-14
+    link: /usr/bin/gcc
+    priority: 100
