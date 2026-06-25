@@ -48,7 +48,7 @@ cd icpc-env-greece
     ```
   * Download the 64 bit version of Ubuntu 22.04.2 Server inside the cloned directory:
     ```bash
-    curl -O https://releases.ubuntu.com/releases/jammy/ubuntu-22.04.5-live-server-amd64.iso
+    curl -O https://releases.ubuntu.com/releases/24.04.4/ubuntu-24.04.4-live-server-amd64.iso
     ```
   * Download the 64 bit version of eclipse into the `files/` directory:
     ```bash

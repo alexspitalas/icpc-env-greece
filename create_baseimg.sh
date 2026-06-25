@@ -3,7 +3,7 @@
 # Creates the image -- Only uses USERDATA and METADATA
 
 # Settings
-ISO64="ubuntu-24.04-live-server-amd64.iso"
+ISO64="ubuntu-24.04.4-live-server-amd64.iso"
 OUT64="unattended-${ISO64}"
 IMG64="base-amd64.img"
 
