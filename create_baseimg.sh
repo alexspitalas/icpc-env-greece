@@ -131,10 +131,11 @@ rm -f "output/$IMG"
 set -x
 qemu-img create -f qcow2 -o size="$IMGSIZE" "output/$IMG"
 qemu-system-x86_64 \
-  --enable-kvm -m 4096\
+  --enable-kvm -m 4096 \
   -drive file="output/$IMG",index=0,media=disk,format=qcow2 \
   -cdrom $OUTISO -boot order=d \
-  -net nic -net user,hostfwd=tcp::5222-:22,hostfwd=tcp::5280-:80 \
+  -netdev user,id=vnet,ipv6=off,hostfwd=tcp::5222-:22,hostfwd=tcp::5280-:80 \
+  -device virtio-net-pci,netdev=vnet \
   -vga qxl -vnc :0 \
   -usbdevice tablet \
   -cpu host
