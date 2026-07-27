@@ -11,6 +11,13 @@ SSH_ICPCADMIN_KEY="files/secrets/icpcadmin@contestmanager"
 PIDFILE="tmp/qemu.pid"
 ALIVE=0
 
+# Resources for the build VM. The provisioning run is mostly apt/dpkg and archive
+# extraction, so giving it more than one core and more than 1G of RAM cuts a large
+# chunk off the build time. Override from the environment on smaller build hosts,
+# e.g. SMP=2 MEM=2048 ./build-final.sh
+SMP=${SMP:-$(nproc)}
+MEM=${MEM:-4096}
+
 IMGFILE="output/$(date +%Y-%m-%d)_image-amd64.img"
 if [[ $IMGFILE != 'all' ]]; then
   IMGFILE="output/$VARIANT-$(date +%Y-%m-%d)_image-amd64.img"
@@ -65,7 +72,7 @@ function waitforssh() {
   fi
 }
 
-qemu-system-x86_64 -smp 1 -m 1024 -drive file="$IMGFILE",index=0,media=disk,format=raw --enable-kvm -net user,hostfwd=tcp::$SSHPORT-:22 -net nic --daemonize --pidfile $PIDFILE -vnc :0 -vga qxl -spice port=5901,disable-ticketing=on -usbdevice tablet -cpu host
+qemu-system-x86_64 -smp $SMP -m $MEM -drive file="$IMGFILE",index=0,media=disk,format=raw --enable-kvm -netdev user,id=vnet,ipv6=off,hostfwd=tcp::$SSHPORT-:22 -device virtio-net-pci,netdev=vnet --daemonize --pidfile $PIDFILE -vnc :0 -vga qxl -spice port=5901,disable-ticketing=on -usbdevice tablet -cpu host
 #qemu-system-x86_64 -smp 1 -m 1024 -drive file="$IMGFILE",index=0,media=disk,format=raw -global isa-fdc.driveA= --enable-kvm -net user,hostfwd=tcp::$SSHPORT-:22 -net nic --daemonize --pidfile $PIDFILE -vnc :0 -vga qxl -spice port=5901,disable-ticketing -usbdevice tablet
 
 ALIVE=0
