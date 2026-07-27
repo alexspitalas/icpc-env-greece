@@ -58,6 +58,10 @@ vscode_extensions:
   # Java
   - vscjava.vscode-java-pack
   # Misc
+  # vim/emacs keybinding extensions are installed but DISABLED by default
+  # (see vscode_disabled_by_default below): they remap the editor's keybindings,
+  # which has repeatedly confused contestants who don't use them. A contestant who
+  # wants vim/emacs just enables it in the Extensions view.
   - vscodevim.vim
   - lfs.vscode-emacs-friendly
   # Themes
@@ -65,6 +69,14 @@ vscode_extensions:
   - akamud.vscode-theme-onelight
   - tgreen7.one-monokai-dark
   - jprestidge.theme-material-theme
+
+# Extensions that are installed (from vscode_extensions) but DISABLED by default.
+# Contestants can turn them on in the Extensions view. Use this for extensions that
+# change editor behaviour for everyone (e.g. remapping keybindings) and so shouldn't
+# be forced on by default. Entries not present in vscode_extensions are ignored.
+vscode_disabled_by_default:
+  - vscodevim.vim
+  - lfs.vscode-emacs-friendly
 
 # Firefox policies. Documented here:
 # https://mozilla.github.io/policy-templates/
