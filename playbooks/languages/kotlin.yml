@@ -1,5 +1,6 @@
 ---
-- name: install unzip so we can extract kotlin
+# ── Kotlin standalone compiler ────────────────────────────────────────────────
+- name: install unzip (needed to extract kotlin)
   apt:
     pkg: unzip
     state: present
@@ -15,8 +16,8 @@
     src: /tmp/kotlin-compiler-2.2.0.zip
     dest: /opt
     remote_src: yes
-    
-- name: create symlinks for kotlin
+
+- name: create symlinks for kotlin binaries
   file:
     src: /opt/kotlinc/bin/{{ binary_name }}
     dest: /usr/local/bin/{{ binary_name }}
@@ -43,7 +44,6 @@
     dest: /opt/kotlin-docs/kotlin-reference.pdf
     mode: 0644
 
-
 - name: register docs
   block:
     - ansible.utils.update_fact:
@@ -57,3 +57,154 @@
       register: updated
     - set_fact:
         lang_docs: "{{ updated.lang_docs }}"
+
+# ── Gradle installation + offline cache seeding ───────────────────────────────
+# The VM has internet during build-final, so we download Gradle directly
+# (same pattern as the Kotlin compiler above). Then we run a minimal dummy
+# Gradle/Kotlin project ON THE VM to populate /opt/gradle-home/caches with
+# the Kotlin Gradle Plugin and kotlin-stdlib. After that the cache is frozen
+# and IntelliJ never needs internet again.
+
+- name: ensure openjdk-21-jdk is present (needed to run Gradle; already installed by java.yml if java is enabled)
+  apt:
+    pkg: openjdk-21-jdk
+    state: present
+
+- name: Download Gradle binary distribution
+  get_url:
+    url: https://services.gradle.org/distributions/gradle-8.14.3-bin.zip
+    dest: /tmp/gradle-8.14.3-bin.zip
+    mode: '0644'
+
+- name: Create /opt/gradle directory
+  file:
+    path: /opt/gradle
+    state: directory
+    mode: '0755'
+
+- name: Extract Gradle
+  unarchive:
+    src: /tmp/gradle-8.14.3-bin.zip
+    dest: /opt/gradle
+    remote_src: yes
+    creates: /opt/gradle/gradle-8.14.3
+
+- name: Create symlink for gradle binary
+  file:
+    src: /opt/gradle/gradle-8.14.3/bin/gradle
+    dest: /usr/local/bin/gradle
+    state: link
+
+# ── Seed the Gradle cache by building a dummy Kotlin project on the VM ────────
+# This runs during provisioning (internet available) and populates
+# /opt/gradle-home with the Kotlin Gradle Plugin + stdlib so IntelliJ
+# can work offline afterwards.
+
+- name: Create system-wide Gradle home directory
+  file:
+    path: /opt/gradle-home
+    state: directory
+    mode: '0755'
+
+- name: Create temporary seed project directory
+  file:
+    path: /tmp/gradle-seed-project/src/main/kotlin
+    state: directory
+    mode: '0755'
+
+- name: Write seed project settings.gradle.kts
+  copy:
+    dest: /tmp/gradle-seed-project/settings.gradle.kts
+    content: |
+      rootProject.name = "offline-seed"
+
+- name: Write seed project build.gradle.kts
+  copy:
+    dest: /tmp/gradle-seed-project/build.gradle.kts
+    content: |
+      plugins {
+          kotlin("jvm") version "2.2.0"
+      }
+      repositories {
+          mavenCentral()
+      }
+      dependencies {
+          implementation(kotlin("stdlib"))
+      }
+
+- name: Write seed Kotlin source file
+  copy:
+    dest: /tmp/gradle-seed-project/src/main/kotlin/Main.kt
+    content: |
+      fun main() = println("hello")
+
+- name: Run dummy Gradle build to seed the cache (downloads Kotlin Gradle Plugin + stdlib)
+  command: >
+    /opt/gradle/gradle-8.14.3/bin/gradle
+    --project-dir /tmp/gradle-seed-project
+    --gradle-user-home /opt/gradle-home
+    --no-daemon
+    compileKotlin
+  environment:
+    JAVA_HOME: /usr/lib/jvm/java-21-openjdk-amd64
+    PATH: /usr/lib/jvm/java-21-openjdk-amd64/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
+- name: Clean up temporary seed project
+  file:
+    path: /tmp/gradle-seed-project
+    state: absent
+
+# ── Force offline mode via Gradle init script ─────────────────────────────────
+# A Gradle init script in GRADLE_USER_HOME/init.d/ runs before every build.
+# This is more reliable than IntelliJ XML config for enforcing offline mode.
+
+- name: Create Gradle init.d directory
+  file:
+    path: /opt/gradle-home/init.d
+    state: directory
+    mode: '0755'
+
+- name: Write Gradle offline init script
+  copy:
+    dest: /opt/gradle-home/init.d/offline.init.gradle
+    mode: '0644'
+    content: |
+      // Force offline mode for every Gradle build on this machine.
+      // This prevents IntelliJ (or any Gradle invocation) from reaching the internet.
+      gradle.startParameter.offline = true
+
+- name: Write gradle.properties with offline flag
+  copy:
+    dest: /opt/gradle-home/gradle.properties
+    mode: '0644'
+    content: |
+      # Force offline mode — no network access during builds
+      org.gradle.offline=true
+      # Reduce memory usage on contest machines
+      org.gradle.jvmargs=-Xmx512m -Xms128m
+      org.gradle.daemon=false
+
+
+- name: Set permissions on system-wide Gradle home (readable+writable by all users)
+  file:
+    path: /opt/gradle-home
+    state: directory
+    recurse: yes
+    mode: 'a+rwX'
+
+# ── Point every user to the pre-seeded cache via GRADLE_USER_HOME ─────────────
+# Setting GRADLE_USER_HOME in /etc/environment is sufficient and cleaner than
+# per-user symlinks — Gradle reads this env var before touching ~/.gradle.
+- name: Set GRADLE_USER_HOME in /etc/environment
+  lineinfile:
+    path: /etc/environment
+    regexp: '^GRADLE_USER_HOME='
+    line: 'GRADLE_USER_HOME=/opt/gradle-home'
+    create: yes
+
+- name: Set JAVA_HOME in /etc/environment (used by IntelliJ gradleJvm setting)
+  lineinfile:
+    path: /etc/environment
+    regexp: '^JAVA_HOME='
+    line: 'JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64'
+    create: yes

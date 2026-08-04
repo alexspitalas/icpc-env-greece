@@ -131,3 +131,44 @@
       NoDisplay=true
   when: clion_license_key | length > 0
 
+# ── IntelliJ Gradle offline pre-configuration ─────────────────────────────────────────────────
+# Deploys gradle.xml to the IDE options directory, which tells IntelliJ to:
+#   1. Use LOCAL Gradle at /opt/gradle/gradle-8.14.3 (never download via wrapper)
+#   2. Use /opt/gradle-home as the Gradle user home (pre-seeded cache)
+#   3. Enable Offline mode so Gradle never reaches the internet
+#
+# Only runs when kotlin is enabled (Gradle only exists on the image then).
+# Written to contestant's config dir AND /etc/skel for newly created users.
+
+- name: Create IntelliJ options directory for contestant
+  file:
+    path: "/home/contestant/.config/JetBrains/IntelliJIdea{{ intellij_version | regex_replace('(\\d+\\.\\d+)\\..*', '\\1') }}/options"
+    state: directory
+    mode: '0755'
+  become: yes
+  when: "'kotlin' in languages"
+
+- name: Deploy IntelliJ Gradle settings (offline, local Gradle) for contestant
+  template:
+    src: gradle-settings.xml.j2
+    dest: "/home/contestant/.config/JetBrains/IntelliJIdea{{ intellij_version | regex_replace('(\\d+\\.\\d+)\\..*', '\\1') }}/options/gradle.xml"
+    mode: '0644'
+  become: yes
+  when: "'kotlin' in languages"
+
+# Also write to /etc/skel so any newly created team user inherits the settings
+- name: Create IntelliJ options directory in /etc/skel
+  file:
+    path: "/etc/skel/.config/JetBrains/IntelliJIdea{{ intellij_version | regex_replace('(\\d+\\.\\d+)\\..*', '\\1') }}/options"
+    state: directory
+    mode: '0755'
+  become: yes
+  when: "'kotlin' in languages"
+
+- name: Deploy IntelliJ Gradle settings (offline, local Gradle) to /etc/skel
+  template:
+    src: gradle-settings.xml.j2
+    dest: "/etc/skel/.config/JetBrains/IntelliJIdea{{ intellij_version | regex_replace('(\\d+\\.\\d+)\\..*', '\\1') }}/options/gradle.xml"
+    mode: '0644'
+  become: yes
+  when: "'kotlin' in languages"
