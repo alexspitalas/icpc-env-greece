@@ -5,17 +5,10 @@
     pkg: unzip
     state: present
 
-- name: Download Kotlin compiler
-  get_url:
-    url: https://github.com/JetBrains/kotlin/releases/download/v2.2.0/kotlin-compiler-2.2.0.zip
-    dest: /tmp/kotlin-compiler-2.2.0.zip
-    mode: '0644'
-
 - name: Install Kotlin
   unarchive:
-    src: /tmp/kotlin-compiler-2.2.0.zip
+    src: files/kotlin-compiler-2.2.0.zip
     dest: /opt
-    remote_src: yes
 
 - name: create symlinks for kotlin binaries
   file:
@@ -43,6 +36,9 @@
     url: https://kotlinlang.org/docs/kotlin-reference.pdf
     dest: /opt/kotlin-docs/kotlin-reference.pdf
     mode: 0644
+  environment:
+    http_proxy: ""
+    https_proxy: ""
 
 - name: register docs
   block:
@@ -75,6 +71,9 @@
     url: https://services.gradle.org/distributions/gradle-8.14.3-bin.zip
     dest: /tmp/gradle-8.14.3-bin.zip
     mode: '0644'
+  environment:
+    http_proxy: ""
+    https_proxy: ""
 
 - name: Create /opt/gradle directory
   file:
@@ -148,6 +147,13 @@
   environment:
     JAVA_HOME: /usr/lib/jvm/java-21-openjdk-amd64
     PATH: /usr/lib/jvm/java-21-openjdk-amd64/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+    # Clear proxy — tinyproxy is set up by proxy.yaml before this runs,
+    # but it only allows contest domains. Gradle needs to reach Maven Central
+    # and plugins.gradle.org, so we bypass the proxy for this build only.
+    http_proxy: ""
+    https_proxy: ""
+    HTTP_PROXY: ""
+    HTTPS_PROXY: ""
 
 - name: Clean up temporary seed project
   file:
