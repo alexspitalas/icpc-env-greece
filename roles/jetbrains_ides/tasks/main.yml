@@ -6,31 +6,32 @@
     mode: '0755'
   become: yes
 
-
-
-# Extract IDEs
+# ── Extract IDEs ───────────────────────────────────────────────────────────────
 - name: Extract IntelliJ Community IDEA
   unarchive:
-    src: "files/ideaIC-{{ intellij_version }}.tar.gz" 
+    src: "files/ideaIC-{{ intellij_version }}.tar.gz"
     dest: /opt/jetbrains/
     creates: /opt/jetbrains/idea
   become: yes
+  when: "'intellij-idea' in devtools"
 
 - name: Extract PyCharm
   unarchive:
     src: "files/pycharm-{{ pycharm_version }}.tar.gz"
-    dest: /opt/jetbrains 
+    dest: /opt/jetbrains
     creates: /opt/jetbrains/pycharm
   become: yes
+  when: "'intellij-pycharm' in devtools"
 
 - name: Extract CLion
   unarchive:
     src: "files/CLion-{{ clion_version }}.tar.gz"
-    dest: /opt/jetbrains 
+    dest: /opt/jetbrains
     creates: /opt/jetbrains/clion
   become: yes
+  when: "'intellij-clion' in devtools"
 
-# Add IDEs to path
+# ── Find installed directories ─────────────────────────────────────────────────
 - name: Find IntelliJ IDEA directory
   find:
     paths: /opt/jetbrains
@@ -38,6 +39,7 @@
     file_type: directory
   register: idea_dir
   become: yes
+  when: "'intellij-idea' in devtools"
 
 - name: Find PyCharm directory
   find:
@@ -46,6 +48,7 @@
     file_type: directory
   register: pycharm_dir
   become: yes
+  when: "'intellij-pycharm' in devtools"
 
 - name: Find CLion directory
   find:
@@ -54,26 +57,41 @@
     file_type: directory
   register: clion_dir
   become: yes
+  when: "'intellij-clion' in devtools"
 
-- name: Create links for terminal access
+# ── Add IDEs to PATH ───────────────────────────────────────────────────────────
+- name: Create symlink for IntelliJ IDEA binary
   file:
-    src: "{{ item.src }}"
-    dest: "{{ item.dest }}"
+    src: "{{ idea_dir.files | last | attr('path') }}/bin/idea.sh"
+    dest: /usr/local/bin/idea
     state: link
-  loop:
-    - { src: "{{ idea_dir.files | last | attr('path') }}/bin/idea.sh", dest: '/usr/local/bin/idea' }
-    - { src: "{{ pycharm_dir.files | last | attr('path') }}/bin/pycharm.sh", dest: '/usr/local/bin/pycharm' }
-    - { src: "{{ clion_dir.files | last | attr('path') }}/bin/clion.sh", dest: '/usr/local/bin/clion' }
   become: yes
-  when: idea_dir.files | length > 0 and pycharm_dir.files | length > 0 and clion_dir.files | length > 0
+  when: "'intellij-idea' in devtools and idea_dir.files | length > 0"
 
-# Create desktop entries
+- name: Create symlink for PyCharm binary
+  file:
+    src: "{{ pycharm_dir.files | last | attr('path') }}/bin/pycharm.sh"
+    dest: /usr/local/bin/pycharm
+    state: link
+  become: yes
+  when: "'intellij-pycharm' in devtools and pycharm_dir.files | length > 0"
+
+- name: Create symlink for CLion binary
+  file:
+    src: "{{ clion_dir.files | last | attr('path') }}/bin/clion.sh"
+    dest: /usr/local/bin/clion
+    state: link
+  become: yes
+  when: "'intellij-clion' in devtools and clion_dir.files | length > 0"
+
+# ── Create desktop entries ─────────────────────────────────────────────────────
 - name: Create IntelliJ IDEA desktop entry
   template:
     src: intellij-idea.desktop.j2
     dest: /usr/share/applications/intellij-idea.desktop
     mode: '0644'
   become: yes
+  when: "'intellij-idea' in devtools"
 
 - name: Create PyCharm desktop entry
   template:
@@ -81,6 +99,7 @@
     dest: /usr/share/applications/pycharm.desktop
     mode: '0644'
   become: yes
+  when: "'intellij-pycharm' in devtools"
 
 - name: Create CLion desktop entry
   template:
@@ -88,26 +107,18 @@
     dest: /usr/share/applications/clion.desktop
     mode: '0644'
   become: yes
+  when: "'intellij-clion' in devtools"
 
-
-
-# CLion license
+# ── CLion license ──────────────────────────────────────────────────────────────
 - name: Create CLion config directory
   file:
     path: "/home/contestant/.config/JetBrains/CLion2025.2"
     state: directory
     mode: '0755'
   become: yes
+  when: "'intellij-clion' in devtools"
 
-
-
-#- name: Add CLion license
-#  copy:
-#    src: "files/clion.key"
-#    dest: "/home/contestant/.config/JetBrains/CLion2025.2/clion.key"
-#    mode: '0644'
-
-# Clion likes a weirdly formatted keyfile (UCS2 encoding with a BOM)
+# CLion likes a weirdly formatted keyfile (UCS2 encoding with a BOM)
 - name: create a script to configure clion license
   copy:
     dest: /usr/local/bin/clion-license-key-install
@@ -119,7 +130,7 @@
         printf '\xFF\xFF';
         echo -en "<certificate-key>\n{{ clion_license_key }}" | iconv -f UTF-8 -t UCS2 -
       ) > $HOME/.config/JetBrains/CLion2025.2/clion.key
-  when: clion_license_key | length > 0
+  when: "'intellij-clion' in devtools and clion_license_key | length > 0"
 
 - name: add licensekey script to autostart
   copy:
@@ -129,9 +140,9 @@
       Type=Application
       Exec=/usr/local/bin/clion-license-key-install
       NoDisplay=true
-  when: clion_license_key | length > 0
+  when: "'intellij-clion' in devtools and clion_license_key | length > 0"
 
-# ── IntelliJ Gradle offline pre-configuration ─────────────────────────────────────────────────
+# ── IntelliJ Gradle offline pre-configuration ─────────────────────────────────
 # Deploys gradle.xml to the IDE options directory, which tells IntelliJ to:
 #   1. Use LOCAL Gradle at /opt/gradle/gradle-8.14.3 (never download via wrapper)
 #   2. Use /opt/gradle-home as the Gradle user home (pre-seeded cache)
@@ -146,7 +157,7 @@
     state: directory
     mode: '0755'
   become: yes
-  when: "'kotlin' in languages"
+  when: "'intellij-idea' in devtools and 'kotlin' in languages"
 
 - name: Deploy IntelliJ Gradle settings (offline, local Gradle) for contestant
   template:
@@ -154,7 +165,7 @@
     dest: "/home/contestant/.config/JetBrains/IntelliJIdea{{ intellij_version | regex_replace('(\\d+\\.\\d+)\\..*', '\\1') }}/options/gradle.xml"
     mode: '0644'
   become: yes
-  when: "'kotlin' in languages"
+  when: "'intellij-idea' in devtools and 'kotlin' in languages"
 
 # Also write to /etc/skel so any newly created team user inherits the settings
 - name: Create IntelliJ options directory in /etc/skel
@@ -163,7 +174,7 @@
     state: directory
     mode: '0755'
   become: yes
-  when: "'kotlin' in languages"
+  when: "'intellij-idea' in devtools and 'kotlin' in languages"
 
 - name: Deploy IntelliJ Gradle settings (offline, local Gradle) to /etc/skel
   template:
@@ -171,4 +182,4 @@
     dest: "/etc/skel/.config/JetBrains/IntelliJIdea{{ intellij_version | regex_replace('(\\d+\\.\\d+)\\..*', '\\1') }}/options/gradle.xml"
     mode: '0644'
   become: yes
-  when: "'kotlin' in languages"
+  when: "'intellij-idea' in devtools and 'kotlin' in languages"

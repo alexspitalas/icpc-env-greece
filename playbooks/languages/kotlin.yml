@@ -130,6 +130,22 @@
       dependencies {
           implementation(kotlin("stdlib"))
       }
+      // Custom task: forces all resolvable configurations to actually download
+      // their JARs into the Gradle cache without spawning a Kotlin compiler daemon.
+      tasks.register("resolveDeps") {
+          doLast {
+              configurations
+                  .filter { it.isCanBeResolved }
+                  .forEach { config ->
+                      try {
+                          config.resolve()
+                          println("[seed] resolved: ${config.name}")
+                      } catch (e: Exception) {
+                          logger.warn("[seed] could not resolve ${config.name}: ${e.message}")
+                      }
+                  }
+          }
+      }
 
 - name: Write seed Kotlin source file
   copy:
@@ -137,23 +153,34 @@
     content: |
       fun main() = println("hello")
 
-- name: Run dummy Gradle build to seed the cache (downloads Kotlin Gradle Plugin + stdlib)
+- name: Resolve and cache all Kotlin + Gradle dependencies (no compiler daemon spawned)
+  # Runs a custom 'resolveDeps' task that calls config.resolve() on all resolvable
+  # configurations. This forces Gradle to download all JARs (kotlin-stdlib, KGP, etc.)
+  # into /opt/gradle-home/caches WITHOUT spawning a Kotlin compiler daemon.
+  # The 'dependencies' task only downloads POMs to print the tree — not the JARs.
   command: >
     /opt/gradle/gradle-8.14.3/bin/gradle
     --project-dir /tmp/gradle-seed-project
     --gradle-user-home /opt/gradle-home
     --no-daemon
-    compileKotlin
+    resolveDeps
   environment:
     JAVA_HOME: /usr/lib/jvm/java-21-openjdk-amd64
     PATH: /usr/lib/jvm/java-21-openjdk-amd64/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
-    # Clear proxy — tinyproxy is set up by proxy.yaml before this runs,
-    # but it only allows contest domains. Gradle needs to reach Maven Central
-    # and plugins.gradle.org, so we bypass the proxy for this build only.
+    GRADLE_OPTS: "-Xmx256m -Xms64m"
     http_proxy: ""
     https_proxy: ""
     HTTP_PROXY: ""
     HTTPS_PROXY: ""
+  register: gradle_seed_result
+
+- name: Verify kotlin-stdlib was downloaded into the Gradle cache
+  shell: find /opt/gradle-home/caches -name 'kotlin-stdlib-*.jar' | grep -q .
+  register: stdlib_check
+  failed_when: stdlib_check.rc != 0
+  changed_when: false
+  # If this task fails, the seed build did not populate the cache.
+  # Check gradle_seed_result output above for details.
 
 - name: Clean up temporary seed project
   file:

@@ -3,7 +3,7 @@ Version=1.0
 Type=Application
 Name=IntelliJ IDEA Community
 Comment=Java IDE for ICPC
-Exec=/opt/jetbrains/idea-{{ intellij_version }}/bin/idea.sh
+Exec=env GRADLE_USER_HOME=/opt/gradle-home JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64 /opt/jetbrains/idea-{{ intellij_version }}/bin/idea.sh
 Icon=/opt/jetbrains/idea-{{ intellij_version }}/bin/idea.png
 Terminal=false
 StartupWMClass=jetbrains-idea-ce
