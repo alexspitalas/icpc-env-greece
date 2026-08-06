@@ -39,9 +39,9 @@
 
 - name: fetch kotlin pdf
   get_url:
-    url: https://kotlinlang.org/docs/kotlin-reference.pdf
+    url: https://raw.githubusercontent.com/JetBrains/kotlin-web-site/fd7ab58c1771072241da7a24fbe7c89bb36aebc7/assets/kotlin-reference.pdf
     dest: /opt/kotlin-docs/kotlin-reference.pdf
-    mode: 0644
+    mode: '0644'
 
 
 - name: register docs
