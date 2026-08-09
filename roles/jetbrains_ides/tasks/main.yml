@@ -32,6 +32,16 @@
   when: "'intellij-clion' in devtools"
 
 # ── Find installed directories ─────────────────────────────────────────────────
+# Initialize safe defaults first so skipped find tasks don't leave the registered
+# variables in an undefined/structurally-wrong state. Ansible finalizes task args
+# (templates src/dest) before evaluating 'when', so every reference to
+# X_dir.files must be safe even when that IDE is disabled.
+- name: Initialize IDE directory facts with safe defaults
+  set_fact:
+    idea_dir: "{{ idea_dir | default({'files': []}) }}"
+    pycharm_dir: "{{ pycharm_dir | default({'files': []}) }}"
+    clion_dir: "{{ clion_dir | default({'files': []}) }}"
+
 - name: Find IntelliJ IDEA directory
   find:
     paths: /opt/jetbrains
@@ -59,10 +69,20 @@
   become: yes
   when: "'intellij-clion' in devtools"
 
+# Re-apply defaults after find tasks in case a skipped task reset the variable
+# to the skipped-task dict (which lacks a 'files' key).
+- name: Normalize IDE directory facts after find tasks
+  set_fact:
+    idea_dir: "{{ {'files': idea_dir.files} if idea_dir.files is defined else {'files': []} }}"
+    pycharm_dir: "{{ {'files': pycharm_dir.files} if pycharm_dir.files is defined else {'files': []} }}"
+    clion_dir: "{{ {'files': clion_dir.files} if clion_dir.files is defined else {'files': []} }}"
+
 # ── Add IDEs to PATH ───────────────────────────────────────────────────────────
+# ternary() ensures src is always a valid string during arg finalization even
+# when files is empty; the 'when' guard prevents the task from actually running.
 - name: Create symlink for IntelliJ IDEA binary
   file:
-    src: "{{ idea_dir.files | last | attr('path') }}/bin/idea.sh"
+    src: "{{ (idea_dir.files | length > 0) | ternary(idea_dir.files | last | attr('path'), '/dev/null') }}/bin/idea.sh"
     dest: /usr/local/bin/idea
     state: link
   become: yes
@@ -70,7 +90,7 @@
 
 - name: Create symlink for PyCharm binary
   file:
-    src: "{{ pycharm_dir.files | last | attr('path') }}/bin/pycharm.sh"
+    src: "{{ (pycharm_dir.files | length > 0) | ternary(pycharm_dir.files | last | attr('path'), '/dev/null') }}/bin/pycharm.sh"
     dest: /usr/local/bin/pycharm
     state: link
   become: yes
@@ -78,7 +98,7 @@
 
 - name: Create symlink for CLion binary
   file:
-    src: "{{ clion_dir.files | last | attr('path') }}/bin/clion.sh"
+    src: "{{ (clion_dir.files | length > 0) | ternary(clion_dir.files | last | attr('path'), '/dev/null') }}/bin/clion.sh"
     dest: /usr/local/bin/clion
     state: link
   become: yes
@@ -167,6 +187,14 @@
   become: yes
   when: "'intellij-idea' in devtools and 'kotlin' in languages"
 
+- name: Deploy IntelliJ Global Libraries (Kotlin runtime) for contestant
+  template:
+    src: applicationLibraries.xml.j2
+    dest: "/home/contestant/.config/JetBrains/IntelliJIdea{{ intellij_version | regex_replace('(\\d+\\.\\d+)\\..*', '\\1') }}/options/applicationLibraries.xml"
+    mode: '0644'
+  become: yes
+  when: "'intellij-idea' in devtools and 'kotlin' in languages"
+
 # Also write to /etc/skel so any newly created team user inherits the settings
 - name: Create IntelliJ options directory in /etc/skel
   file:
@@ -180,6 +208,60 @@
   template:
     src: gradle-settings.xml.j2
     dest: "/etc/skel/.config/JetBrains/IntelliJIdea{{ intellij_version | regex_replace('(\\d+\\.\\d+)\\..*', '\\1') }}/options/gradle.xml"
+    mode: '0644'
+  become: yes
+  when: "'intellij-idea' in devtools and 'kotlin' in languages"
+
+- name: Deploy IntelliJ Global Libraries (Kotlin runtime) to /etc/skel
+  template:
+    src: applicationLibraries.xml.j2
+    dest: "/etc/skel/.config/JetBrains/IntelliJIdea{{ intellij_version | regex_replace('(\\d+\\.\\d+)\\..*', '\\1') }}/options/applicationLibraries.xml"
+    mode: '0644'
+  become: yes
+  when: "'intellij-idea' in devtools and 'kotlin' in languages"
+
+# ── Guarantee Gradle finds the pre-seeded cache regardless of launch method ────
+# GRADLE_USER_HOME in /etc/environment is NOT reliably inherited when IntelliJ
+# is launched from a desktop icon, Wayland session, or via sudo. A ~/.gradle
+# symlink is the most robust solution: it makes Gradle's built-in default path
+# point directly to /opt/gradle-home with no env var dependency at all.
+
+- name: Create ~/.gradle symlink to pre-seeded cache for contestant
+  file:
+    src: /opt/gradle-home
+    dest: /home/contestant/.gradle
+    state: link
+    owner: contestant
+    group: contestant
+  become: yes
+  when: "'intellij-idea' in devtools and 'kotlin' in languages"
+
+- name: Create ~/.gradle symlink in /etc/skel for new team users
+  file:
+    src: /opt/gradle-home
+    dest: /etc/skel/.gradle
+    state: link
+  become: yes
+  when: "'intellij-idea' in devtools and 'kotlin' in languages"
+
+- name: Export GRADLE_USER_HOME in contestant shell profile (terminal launch fallback)
+  lineinfile:
+    path: /home/contestant/.profile
+    line: 'export GRADLE_USER_HOME=/opt/gradle-home'
+    regexp: '^export GRADLE_USER_HOME='
+    create: yes
+    owner: contestant
+    group: contestant
+    mode: '0644'
+  become: yes
+  when: "'intellij-idea' in devtools and 'kotlin' in languages"
+
+- name: Export GRADLE_USER_HOME in /etc/skel/.profile for new team users
+  lineinfile:
+    path: /etc/skel/.profile
+    line: 'export GRADLE_USER_HOME=/opt/gradle-home'
+    regexp: '^export GRADLE_USER_HOME='
+    create: yes
     mode: '0644'
   become: yes
   when: "'intellij-idea' in devtools and 'kotlin' in languages"
