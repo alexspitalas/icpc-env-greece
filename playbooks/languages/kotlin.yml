@@ -187,6 +187,76 @@
     path: /tmp/gradle-seed-project
     state: absent
 
+# ── Populate Maven Local Cache for IntelliJ Build System ──────────────────────
+# When a user chooses "IntelliJ" as the build system instead of Gradle, IntelliJ
+# natively attempts to download the Kotlin stdlib from Maven Central. By pre-downloading
+# it into /opt/m2/repository and symlinking to ~/.m2, IntelliJ finds it instantly offline.
+
+- name: Install Maven to fetch dependencies for IntelliJ build system
+  apt:
+    name: maven
+    state: present
+  become: yes
+
+- name: Ensure /opt/m2/repository exists
+  file:
+    path: /opt/m2/repository
+    state: directory
+    mode: '0755'
+  become: yes
+
+- name: Pre-download Kotlin standard library for Maven Local (IntelliJ build system)
+  command: >
+    mvn dependency:get
+    -Dartifact="org.jetbrains.kotlin:kotlin-stdlib:2.2.0"
+    -Dmaven.repo.local="/opt/m2/repository"
+  environment:
+    http_proxy: ""
+    https_proxy: ""
+    HTTP_PROXY: ""
+    HTTPS_PROXY: ""
+  become: yes
+
+- name: Pre-download Kotlin stdlib jdk8 for Maven Local (IntelliJ build system)
+  command: >
+    mvn dependency:get
+    -Dartifact="org.jetbrains.kotlin:kotlin-stdlib-jdk8:2.2.0"
+    -Dmaven.repo.local="/opt/m2/repository"
+  environment:
+    http_proxy: ""
+    https_proxy: ""
+    HTTP_PROXY: ""
+    HTTPS_PROXY: ""
+  become: yes
+
+- name: Pre-download Kotlin reflect for Maven Local (IntelliJ build system)
+  command: >
+    mvn dependency:get
+    -Dartifact="org.jetbrains.kotlin:kotlin-reflect:2.2.0"
+    -Dmaven.repo.local="/opt/m2/repository"
+  environment:
+    http_proxy: ""
+    https_proxy: ""
+    HTTP_PROXY: ""
+    HTTPS_PROXY: ""
+  become: yes
+
+- name: Create ~/.m2 symlink for contestant
+  file:
+    src: /opt/m2
+    dest: /home/contestant/.m2
+    state: link
+    owner: contestant
+    group: contestant
+  become: yes
+
+- name: Create ~/.m2 symlink in /etc/skel for new team users
+  file:
+    src: /opt/m2
+    dest: /etc/skel/.m2
+    state: link
+  become: yes
+
 # ── Force offline mode via Gradle init script ─────────────────────────────────
 # A Gradle init script in GRADLE_USER_HOME/init.d/ runs before every build.
 # This is more reliable than IntelliJ XML config for enforcing offline mode.
