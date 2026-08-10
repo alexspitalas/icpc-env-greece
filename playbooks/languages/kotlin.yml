@@ -208,38 +208,65 @@
 - name: Pre-download Kotlin standard library for Maven Local (IntelliJ build system)
   command: >
     mvn dependency:get
-    -Dartifact="org.jetbrains.kotlin:kotlin-stdlib:2.2.0"
+    -Dartifact="org.jetbrains.kotlin:kotlin-stdlib:{{ item }}"
     -Dmaven.repo.local="/opt/m2/repository"
+  loop:
+    - "2.2.0"
+    - "2.1.21"
+    - "2.1.10"
+    - "2.1.0"
+    - "2.0.21"
+    - "2.0.0"
+    - "1.9.24"
   environment:
     http_proxy: ""
     https_proxy: ""
     HTTP_PROXY: ""
     HTTPS_PROXY: ""
   become: yes
+  ignore_errors: true
 
 - name: Pre-download Kotlin stdlib jdk8 for Maven Local (IntelliJ build system)
   command: >
     mvn dependency:get
-    -Dartifact="org.jetbrains.kotlin:kotlin-stdlib-jdk8:2.2.0"
+    -Dartifact="org.jetbrains.kotlin:kotlin-stdlib-jdk8:{{ item }}"
     -Dmaven.repo.local="/opt/m2/repository"
+  loop:
+    - "2.2.0"
+    - "2.1.21"
+    - "2.1.10"
+    - "2.1.0"
+    - "2.0.21"
+    - "2.0.0"
+    - "1.9.24"
   environment:
     http_proxy: ""
     https_proxy: ""
     HTTP_PROXY: ""
     HTTPS_PROXY: ""
   become: yes
+  ignore_errors: true
 
 - name: Pre-download Kotlin reflect for Maven Local (IntelliJ build system)
   command: >
     mvn dependency:get
-    -Dartifact="org.jetbrains.kotlin:kotlin-reflect:2.2.0"
+    -Dartifact="org.jetbrains.kotlin:kotlin-reflect:{{ item }}"
     -Dmaven.repo.local="/opt/m2/repository"
+  loop:
+    - "2.2.0"
+    - "2.1.21"
+    - "2.1.10"
+    - "2.1.0"
+    - "2.0.21"
+    - "2.0.0"
+    - "1.9.24"
   environment:
     http_proxy: ""
     https_proxy: ""
     HTTP_PROXY: ""
     HTTPS_PROXY: ""
   become: yes
+  ignore_errors: true
 
 - name: Create ~/.m2 symlink for contestant
   file:
