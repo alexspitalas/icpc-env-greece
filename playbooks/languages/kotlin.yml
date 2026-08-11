@@ -319,7 +319,7 @@
 
 - name: Symlink local Gradle zip into wrapper cache (bypass Squid HTTP 403)
   file:
-    src: "/opt/gradle/gradle-{{ gradle_version }}-bin.zip"
+    src: "/opt/gradle/gradle-8.14.3-bin.zip"
     dest: "/opt/gradle-home/wrapper/dists/gradle-{{ item.ver }}-{{ item.type }}/{{ item.hash }}/gradle-{{ item.ver }}-{{ item.type }}.zip"
     state: link
     force: yes
