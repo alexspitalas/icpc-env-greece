@@ -285,6 +285,71 @@
     state: directory
     mode: '0755'
 
+- name: Create Gradle wrapper hash directories for IntelliJ wizard bypass
+  file:
+    path: "/opt/gradle-home/wrapper/dists/gradle-{{ item.ver }}-{{ item.type }}/{{ item.hash }}"
+    state: directory
+    mode: '0755'
+  loop:
+    - { ver: '8.8', type: 'bin', hash: 'dl7vupf4psengwqhwktix4v1' }
+    - { ver: '8.8', type: 'all', hash: '6gdy1pgp427xkqcjbxw3ylt6h' }
+    - { ver: '8.9', type: 'bin', hash: '90cnw93cvbtalezasaz0blq0a' }
+    - { ver: '8.9', type: 'all', hash: '6m0mbzute7p0zdleavqlib88a' }
+    - { ver: '8.10', type: 'bin', hash: 'deqhafrv1ntovfmgh0nh3npr9' }
+    - { ver: '8.10', type: 'all', hash: '3ym48ijgw9iixtry4iwty4ydy' }
+    - { ver: '8.10.1', type: 'bin', hash: 'e90i968nv55tch01zkse4avv3' }
+    - { ver: '8.10.1', type: 'all', hash: '886qcmkvyakueug5rvvzp4zps' }
+    - { ver: '8.10.2', type: 'bin', hash: 'a04bxjujx95o3nb99gddekhwo' }
+    - { ver: '8.10.2', type: 'all', hash: '7iv73wktx1xtkvlq19urqw1wm' }
+    - { ver: '8.11', type: 'bin', hash: 'c4te04g51qsyw1bxcb929u7br' }
+    - { ver: '8.11', type: 'all', hash: 'd8646bxn4fyrpftct23iupfv0' }
+    - { ver: '8.11.1', type: 'bin', hash: 'bpt9gzteqjrbo1mjrsomdt32c' }
+    - { ver: '8.11.1', type: 'all', hash: '2qik7nd48slq1ooc2496ixf4i' }
+    - { ver: '8.12', type: 'bin', hash: 'cetblhg4pflnnks72fxwobvgv' }
+    - { ver: '8.12', type: 'all', hash: 'ejduaidbjup3bmmkhw3rie4zb' }
+    - { ver: '8.12.1', type: 'bin', hash: 'eumc4uhoysa37zql93vfjkxy0' }
+    - { ver: '8.12.1', type: 'all', hash: '5akij8gnr65tdxupapyu22pqa' }
+    - { ver: '8.13', type: 'bin', hash: '5xuhj0ry160q40clulazy9h7d' }
+    - { ver: '8.13', type: 'all', hash: '54h0s9kvb6g2sinako7ub77ku' }
+    - { ver: '8.14', type: 'bin', hash: '38aieal9i53h9rfe7vjup95b9' }
+    - { ver: '8.14', type: 'all', hash: 'c2qonpi39x1mddn7hk5gh9iqj' }
+    - { ver: '8.15', type: 'bin', hash: 'de58jrnchcnk645rn9fefg6q' }
+    - { ver: '8.15', type: 'all', hash: 'agkwspkt1go7spxcbhuwkxgfz' }
+  become: yes
+
+- name: Symlink local Gradle zip into wrapper cache (bypass Squid HTTP 403)
+  file:
+    src: "/opt/gradle/gradle-{{ gradle_version }}-bin.zip"
+    dest: "/opt/gradle-home/wrapper/dists/gradle-{{ item.ver }}-{{ item.type }}/{{ item.hash }}/gradle-{{ item.ver }}-{{ item.type }}.zip"
+    state: link
+    force: yes
+  loop:
+    - { ver: '8.8', type: 'bin', hash: 'dl7vupf4psengwqhwktix4v1' }
+    - { ver: '8.8', type: 'all', hash: '6gdy1pgp427xkqcjbxw3ylt6h' }
+    - { ver: '8.9', type: 'bin', hash: '90cnw93cvbtalezasaz0blq0a' }
+    - { ver: '8.9', type: 'all', hash: '6m0mbzute7p0zdleavqlib88a' }
+    - { ver: '8.10', type: 'bin', hash: 'deqhafrv1ntovfmgh0nh3npr9' }
+    - { ver: '8.10', type: 'all', hash: '3ym48ijgw9iixtry4iwty4ydy' }
+    - { ver: '8.10.1', type: 'bin', hash: 'e90i968nv55tch01zkse4avv3' }
+    - { ver: '8.10.1', type: 'all', hash: '886qcmkvyakueug5rvvzp4zps' }
+    - { ver: '8.10.2', type: 'bin', hash: 'a04bxjujx95o3nb99gddekhwo' }
+    - { ver: '8.10.2', type: 'all', hash: '7iv73wktx1xtkvlq19urqw1wm' }
+    - { ver: '8.11', type: 'bin', hash: 'c4te04g51qsyw1bxcb929u7br' }
+    - { ver: '8.11', type: 'all', hash: 'd8646bxn4fyrpftct23iupfv0' }
+    - { ver: '8.11.1', type: 'bin', hash: 'bpt9gzteqjrbo1mjrsomdt32c' }
+    - { ver: '8.11.1', type: 'all', hash: '2qik7nd48slq1ooc2496ixf4i' }
+    - { ver: '8.12', type: 'bin', hash: 'cetblhg4pflnnks72fxwobvgv' }
+    - { ver: '8.12', type: 'all', hash: 'ejduaidbjup3bmmkhw3rie4zb' }
+    - { ver: '8.12.1', type: 'bin', hash: 'eumc4uhoysa37zql93vfjkxy0' }
+    - { ver: '8.12.1', type: 'all', hash: '5akij8gnr65tdxupapyu22pqa' }
+    - { ver: '8.13', type: 'bin', hash: '5xuhj0ry160q40clulazy9h7d' }
+    - { ver: '8.13', type: 'all', hash: '54h0s9kvb6g2sinako7ub77ku' }
+    - { ver: '8.14', type: 'bin', hash: '38aieal9i53h9rfe7vjup95b9' }
+    - { ver: '8.14', type: 'all', hash: 'c2qonpi39x1mddn7hk5gh9iqj' }
+    - { ver: '8.15', type: 'bin', hash: 'de58jrnchcnk645rn9fefg6q' }
+    - { ver: '8.15', type: 'all', hash: 'agkwspkt1go7spxcbhuwkxgfz' }
+  become: yes
+
 - name: Write Gradle offline init script
   copy:
     dest: /opt/gradle-home/init.d/offline.init.gradle
