@@ -268,15 +268,6 @@
   become: yes
   ignore_errors: true
 
-- name: Create ~/.m2 symlink for contestant
-  file:
-    src: /opt/m2
-    dest: /home/contestant/.m2
-    state: link
-    owner: contestant
-    group: contestant
-  become: yes
-
 - name: Create ~/.m2 symlink in /etc/skel for new team users
   file:
     src: /opt/m2

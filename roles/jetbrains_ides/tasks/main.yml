@@ -132,7 +132,7 @@
 # ── CLion license ──────────────────────────────────────────────────────────────
 - name: Create CLion config directory
   file:
-    path: "/home/contestant/.config/JetBrains/CLion2025.2"
+    path: "/etc/skel/.config/JetBrains/CLion2025.2"
     state: directory
     mode: '0755'
   become: yes
@@ -173,36 +173,6 @@
 
 - name: Create IntelliJ options directory for contestant
   file:
-    path: "/home/contestant/.config/JetBrains/IntelliJIdea{{ intellij_version | regex_replace('(\\d+\\.\\d+)\\..*', '\\1') }}/options"
-    state: directory
-    mode: '0755'
-  become: yes
-  when: "'intellij-idea' in devtools and 'kotlin' in languages"
-
-- name: Deploy IntelliJ Gradle settings (offline, local Gradle) for contestant
-  template:
-    src: gradle-settings.xml.j2
-    dest: "/home/contestant/.config/JetBrains/IntelliJIdea{{ intellij_version | regex_replace('(\\d+\\.\\d+)\\..*', '\\1') }}/options/gradle.xml"
-    mode: '0644'
-  become: yes
-  when: "'intellij-idea' in devtools and 'kotlin' in languages"
-
-- name: Deploy IntelliJ Default Project Settings (force LOCAL Gradle) for contestant
-  template:
-    src: project.default.xml.j2
-    dest: "/home/contestant/.config/JetBrains/IntelliJIdea{{ intellij_version | regex_replace('(\\d+\\.\\d+)\\..*', '\\1') }}/options/project.default.xml"
-    mode: '0644'
-  become: yes
-  when: "'intellij-idea' in devtools and 'kotlin' in languages"
-
-- name: Deploy IntelliJ Global Libraries (Kotlin runtime) for contestant
-  template:
-    src: applicationLibraries.xml.j2
-    dest: "/home/contestant/.config/JetBrains/IntelliJIdea{{ intellij_version | regex_replace('(\\d+\\.\\d+)\\..*', '\\1') }}/options/applicationLibraries.xml"
-    mode: '0644'
-  become: yes
-  when: "'intellij-idea' in devtools and 'kotlin' in languages"
-
 # Also write to /etc/skel so any newly created team user inherits the settings
 - name: Create IntelliJ options directory in /etc/skel
   file:
@@ -242,16 +212,6 @@
 # symlink is the most robust solution: it makes Gradle's built-in default path
 # point directly to /opt/gradle-home with no env var dependency at all.
 
-- name: Create ~/.gradle symlink to pre-seeded cache for contestant
-  file:
-    src: /opt/gradle-home
-    dest: /home/contestant/.gradle
-    state: link
-    owner: contestant
-    group: contestant
-  become: yes
-  when: "'intellij-idea' in devtools and 'kotlin' in languages"
-
 - name: Create ~/.gradle symlink in /etc/skel for new team users
   file:
     src: /opt/gradle-home
@@ -260,17 +220,7 @@
   become: yes
   when: "'intellij-idea' in devtools and 'kotlin' in languages"
 
-- name: Export GRADLE_USER_HOME in contestant shell profile (terminal launch fallback)
-  lineinfile:
-    path: /home/contestant/.profile
-    line: 'export GRADLE_USER_HOME=/opt/gradle-home'
-    regexp: '^export GRADLE_USER_HOME='
-    create: yes
-    owner: contestant
-    group: contestant
-    mode: '0644'
-  become: yes
-  when: "'intellij-idea' in devtools and 'kotlin' in languages"
+
 
 - name: Export GRADLE_USER_HOME in /etc/skel/.profile for new team users
   lineinfile:
