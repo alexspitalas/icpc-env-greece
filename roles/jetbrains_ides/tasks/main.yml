@@ -171,8 +171,6 @@
 # Only runs when kotlin is enabled (Gradle only exists on the image then).
 # Written to contestant's config dir AND /etc/skel for newly created users.
 
-- name: Create IntelliJ options directory for contestant
-  file:
 # Also write to /etc/skel so any newly created team user inherits the settings
 - name: Create IntelliJ options directory in /etc/skel
   file:
