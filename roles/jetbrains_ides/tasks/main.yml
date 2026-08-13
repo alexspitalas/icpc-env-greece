@@ -212,28 +212,4 @@
   become: yes
   when: "'intellij-idea' in devtools and 'kotlin' in languages"
 
-# ── Guarantee Gradle finds the pre-seeded cache regardless of launch method ────
-# GRADLE_USER_HOME in /etc/environment is NOT reliably inherited when IntelliJ
-# is launched from a desktop icon, Wayland session, or via sudo. A ~/.gradle
-# symlink is the most robust solution: it makes Gradle's built-in default path
-# point directly to /opt/gradle-home with no env var dependency at all.
 
-- name: Create ~/.gradle symlink in /etc/skel for new team users
-  file:
-    src: /opt/gradle-home
-    dest: /etc/skel/.gradle
-    state: link
-  become: yes
-  when: "'intellij-idea' in devtools and 'kotlin' in languages"
-
-
-
-- name: Export GRADLE_USER_HOME in /etc/skel/.profile for new team users
-  lineinfile:
-    path: /etc/skel/.profile
-    line: 'export GRADLE_USER_HOME=/opt/gradle-home'
-    regexp: '^export GRADLE_USER_HOME='
-    create: yes
-    mode: '0644'
-  become: yes
-  when: "'intellij-idea' in devtools and 'kotlin' in languages"

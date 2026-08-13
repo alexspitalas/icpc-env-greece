@@ -403,22 +403,15 @@
       org.gradle.daemon=false
 
 
-- name: Set permissions on system-wide Gradle home (readable+writable by all users)
-  file:
-    path: /opt/gradle-home
-    state: directory
-    recurse: yes
-    mode: 'a+rwX'
+- name: Isolate Gradle cache by copying system-wide home to /etc/skel
+  command: cp -a /opt/gradle-home /etc/skel/.gradle
+  become: yes
 
-# ── Point every user to the pre-seeded cache via GRADLE_USER_HOME ─────────────
-# Setting GRADLE_USER_HOME in /etc/environment is sufficient and cleaner than
-# per-user symlinks — Gradle reads this env var before touching ~/.gradle.
-- name: Set GRADLE_USER_HOME in /etc/environment
-  lineinfile:
-    path: /etc/environment
-    regexp: '^GRADLE_USER_HOME='
-    line: 'GRADLE_USER_HOME=/opt/gradle-home'
-    create: yes
+- name: Remove root-owned daemon directory from /etc/skel/.gradle to prevent permission errors
+  file:
+    path: /etc/skel/.gradle/daemon
+    state: absent
+  become: yes
 
 - name: Set JAVA_HOME in /etc/environment (used by IntelliJ gradleJvm setting)
   lineinfile:
