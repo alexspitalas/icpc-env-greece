@@ -199,7 +199,7 @@
 - name: Deploy IntelliJ Maven settings (force offline mode) to /etc/skel
   template:
     src: maven.xml.j2
-    dest: "/etc/skel/.config/JetBrains/IntelliJIdea{{ intellij_version | regex_replace('(\\d+\\.\\d+)\\..*', '\\1') }}/options/maven.xml"
+    dest: "/etc/skel/.config/JetBrains/IdeaIC{{ intellij_version | regex_replace('(\\d+\\.\\d+)\\..*', '\\1') }}/options/maven.xml"
     mode: '0644'
   become: yes
   when: "'intellij-idea' in devtools and 'kotlin' in languages"
