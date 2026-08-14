@@ -174,7 +174,7 @@
 # Also write to /etc/skel so any newly created team user inherits the settings
 - name: Create IntelliJ options directory in /etc/skel
   file:
-    path: "/etc/skel/.config/JetBrains/IntelliJIdea{{ intellij_version | regex_replace('(\\d+\\.\\d+)\\..*', '\\1') }}/options"
+    path: "/etc/skel/.config/JetBrains/IdeaIC{{ intellij_version | regex_replace('(\\d+\\.\\d+)\\..*', '\\1') }}/options"
     state: directory
     mode: '0755'
   become: yes
@@ -183,7 +183,7 @@
 - name: Deploy IntelliJ Gradle settings (offline, local Gradle) to /etc/skel
   template:
     src: gradle-settings.xml.j2
-    dest: "/etc/skel/.config/JetBrains/IntelliJIdea{{ intellij_version | regex_replace('(\\d+\\.\\d+)\\..*', '\\1') }}/options/gradle.xml"
+    dest: "/etc/skel/.config/JetBrains/IdeaIC{{ intellij_version | regex_replace('(\\d+\\.\\d+)\\..*', '\\1') }}/options/gradle.xml"
     mode: '0644'
   become: yes
   when: "'intellij-idea' in devtools and 'kotlin' in languages"
@@ -191,7 +191,7 @@
 - name: Deploy IntelliJ Global Libraries (Kotlin runtime) to /etc/skel
   template:
     src: applicationLibraries.xml.j2
-    dest: "/etc/skel/.config/JetBrains/IntelliJIdea{{ intellij_version | regex_replace('(\\d+\\.\\d+)\\..*', '\\1') }}/options/applicationLibraries.xml"
+    dest: "/etc/skel/.config/JetBrains/IdeaIC{{ intellij_version | regex_replace('(\\d+\\.\\d+)\\..*', '\\1') }}/options/applicationLibraries.xml"
     mode: '0644'
   become: yes
   when: "'intellij-idea' in devtools and 'kotlin' in languages"
@@ -204,10 +204,18 @@
   become: yes
   when: "'intellij-idea' in devtools and 'kotlin' in languages"
 
+- name: Deploy IntelliJ JDK Table (pre-configures JDK to fix Kotlin auto-configure prompt) to /etc/skel
+  copy:
+    src: files/jdk.table.xml
+    dest: "/etc/skel/.config/JetBrains/IdeaIC{{ intellij_version | regex_replace('(\\d+\\.\\d+)\\..*', '\\1') }}/options/jdk.table.xml"
+    mode: '0644'
+  become: yes
+  when: "'intellij-idea' in devtools and 'kotlin' in languages"
+
 - name: Deploy IntelliJ Default Project Settings (force LOCAL Gradle) to /etc/skel
   template:
     src: project.default.xml.j2
-    dest: "/etc/skel/.config/JetBrains/IntelliJIdea{{ intellij_version | regex_replace('(\\d+\\.\\d+)\\..*', '\\1') }}/options/project.default.xml"
+    dest: "/etc/skel/.config/JetBrains/IdeaIC{{ intellij_version | regex_replace('(\\d+\\.\\d+)\\..*', '\\1') }}/options/project.default.xml"
     mode: '0644'
   become: yes
   when: "'intellij-idea' in devtools and 'kotlin' in languages"
