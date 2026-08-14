@@ -82,7 +82,7 @@
 # when files is empty; the 'when' guard prevents the task from actually running.
 - name: Create symlink for IntelliJ IDEA binary
   file:
-    src: "{{ (idea_dir.files | length > 0) | ternary(idea_dir.files | last | attr('path'), '/dev/null') }}/bin/idea.sh"
+    src: "{{ (idea_dir.files | last | default({'path': '/dev/null'})).path }}/bin/idea.sh"
     dest: /usr/local/bin/idea
     state: link
   become: yes
@@ -90,7 +90,7 @@
 
 - name: Create symlink for PyCharm binary
   file:
-    src: "{{ (pycharm_dir.files | length > 0) | ternary(pycharm_dir.files | last | attr('path'), '/dev/null') }}/bin/pycharm.sh"
+    src: "{{ (pycharm_dir.files | last | default({'path': '/dev/null'})).path }}/bin/pycharm.sh"
     dest: /usr/local/bin/pycharm
     state: link
   become: yes
@@ -98,7 +98,7 @@
 
 - name: Create symlink for CLion binary
   file:
-    src: "{{ (clion_dir.files | length > 0) | ternary(clion_dir.files | last | attr('path'), '/dev/null') }}/bin/clion.sh"
+    src: "{{ (clion_dir.files | last | default({'path': '/dev/null'})).path }}/bin/clion.sh"
     dest: /usr/local/bin/clion
     state: link
   become: yes
