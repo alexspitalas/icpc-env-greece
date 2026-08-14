@@ -117,9 +117,11 @@
       mkdir -p $HOME/.config/JetBrains/CLion2025.2
       (
         printf '\xFF\xFF';
-        echo -en "<certificate-key>\n{{ clion_license_key }}" | iconv -f UTF-8 -t UCS2 -
+        echo -en "<certificate-key>\n{{ clion_license_key | default('') }}" | iconv -f UTF-8 -t UCS2 -
       ) > $HOME/.config/JetBrains/CLion2025.2/clion.key
-  when: clion_license_key | length > 0
+  when:
+    - clion_license_key is defined
+    - clion_license_key | length > 0
 
 - name: add licensekey script to autostart
   copy:
@@ -129,5 +131,6 @@
       Type=Application
       Exec=/usr/local/bin/clion-license-key-install
       NoDisplay=true
-  when: clion_license_key | length > 0
-
+  when: 
+    - clion_license_key is defined
+    - clion_license_key | length > 0

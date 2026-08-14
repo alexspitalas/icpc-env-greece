@@ -1,6 +1,6 @@
 ---
 # Configure Timerzone
-icpc_timezone: 'Europe/Athens'
+icpc_timezone: "Europe/Athens"
 
 # Configure the ICPC admin password. Is this the system admin password or the password of the
 # Tool they use to host the contest. Probably they create another user, apart from the team
@@ -35,7 +35,7 @@ languages:
   - cpp
   - java
   - python3
-#  - kotlin
+  - kotlin
 
 devtools:
   - codeblocks
@@ -43,10 +43,9 @@ devtools:
   - vscode
   - eclipse
   - netbeans
-#  - intellij-idea
-#  - intellij-pycharm
-#  - intellij-clion
-
+  - intellij-idea
+  - intellij-pycharm
+  - intellij-clion
 
 vscode_extensions:
   # C/C++
@@ -110,10 +109,8 @@ firefox_default_policies:
   DNSOverHTTPS:
     Enabled: false
   # Install the squid CA so it can mitm things/properly filter the network
-  Certificates: {
-    ImportEnterpriseRoots: true,
-    Install: ["/etc/squid/squidCA.crt"]
-  }
+  Certificates:
+    { ImportEnterpriseRoots: true, Install: ["/etc/squid/squidCA.crt"] }
 
   # Disable a bunch of random features we don't need
   DisablePocket: true
