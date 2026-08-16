@@ -148,9 +148,10 @@
       mkdir -p $HOME/.config/JetBrains/CLion2025.2
       (
         printf '\xFF\xFF';
-        echo -en "<certificate-key>\n{{ clion_license_key }}" | iconv -f UTF-8 -t UCS2 -
+        echo -en "<certificate-key>\n{{ clion_license_key | default('') }}" | iconv -f UTF-8 -t UCS2 -
       ) > $HOME/.config/JetBrains/CLion2025.2/clion.key
   when: "'intellij-clion' in devtools and clion_license_key is defined and clion_license_key | length > 0"
+
 
 - name: add licensekey script to autostart
   copy:
@@ -219,5 +220,3 @@
     mode: '0644'
   become: yes
   when: "'intellij-idea' in devtools and 'kotlin' in languages"
-
-
