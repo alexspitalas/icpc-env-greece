@@ -71,3 +71,51 @@
 - name: Allow the contestant user(and others) to talk to localhost from localhost). Fixes issue with intellij/eclipse compilation/debugging.
   lineinfile: dest=/etc/ufw/before.rules line="-I ufw-before-output -s 127.0.0.1 -d 127.0.0.1 -j ACCEPT" insertafter="uid-owner contestant -j REJECT" state=present
 
+# ── IPv6: mirror contestant isolation to ip6tables ────────────────────────────
+# UFW's before.rules only covers IPv4. If the contest LAN provides IPv6 addresses
+# via SLAAC, contestant traffic would be completely unfiltered without these rules.
+- name: "ip6tables: REJECT all outbound IPv6 for contestant"
+  lineinfile:
+    dest: /etc/ufw/before6.rules
+    line: "-I ufw6-before-output -m owner --uid-owner contestant -j REJECT"
+    insertbefore: "^# don't delete the 'COMMIT' line"
+    state: present
+
+- name: "ip6tables: allow contestant IPv6 loopback (::1) for IDE internal IPC"
+  lineinfile:
+    dest: /etc/ufw/before6.rules
+    line: "-I ufw6-before-output -m owner --uid-owner contestant -d ::1 -j ACCEPT"
+    insertbefore: "^# don't delete the 'COMMIT' line"
+    state: present
+
+# ── Block DNS from contestant (prevent DNS tunneling) ─────────────────────────
+# Squid resolves DNS on behalf of the contestant — contestants don't need to
+# make direct DNS queries. Blocking port 53 closes the DNS tunnel vector
+# (iodine, dnscat2 and similar tools encode data in DNS queries).
+- name: "iptables: block DNS UDP from contestant (prevent DNS tunneling)"
+  lineinfile:
+    dest: /etc/ufw/before.rules
+    line: "-I ufw-before-output -m owner --uid-owner contestant -p udp --dport 53 -j REJECT"
+    insertbefore: "^# don't delete the 'COMMIT' line"
+    state: present
+
+- name: "iptables: block DNS TCP from contestant (prevent DNS tunneling)"
+  lineinfile:
+    dest: /etc/ufw/before.rules
+    line: "-I ufw-before-output -m owner --uid-owner contestant -p tcp --dport 53 -j REJECT"
+    insertbefore: "^# don't delete the 'COMMIT' line"
+    state: present
+
+- name: "ip6tables: block DNS UDP from contestant (IPv6)"
+  lineinfile:
+    dest: /etc/ufw/before6.rules
+    line: "-I ufw6-before-output -m owner --uid-owner contestant -p udp --dport 53 -j REJECT"
+    insertbefore: "^# don't delete the 'COMMIT' line"
+    state: present
+
+- name: "ip6tables: block DNS TCP from contestant (IPv6)"
+  lineinfile:
+    dest: /etc/ufw/before6.rules
+    line: "-I ufw6-before-output -m owner --uid-owner contestant -p tcp --dport 53 -j REJECT"
+    insertbefore: "^# don't delete the 'COMMIT' line"
+    state: present
