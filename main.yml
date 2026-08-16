@@ -100,7 +100,13 @@
     - import_tasks: 'playbooks/gui.yml'
 
     - import_tasks: 'playbooks/reverseproxy.yml'
-    - import_tasks: 'playbooks/proxy.yaml'
+    # NOTE: proxy.yaml (tinyproxy on :8888) is intentionally disabled.
+    # squid (playbooks/firewall.yml) is the network filter. tinyproxy forwards to
+    # ANY destination with no domain whitelist, and the UFW rules allow
+    # 127.0.0.1->127.0.0.1, so a contestant pointing http_proxy at localhost:8888
+    # would bypass the squid allow-list entirely. Re-enable only if it is chained
+    # behind squid.
+    #- import_tasks: 'playbooks/proxy.yaml'
     - import_tasks: 'playbooks/compilers.yml'
     - import_tasks: 'playbooks/devel_tools.yml'
   #  - import_tasks: 'roles/jetbrains_ides/tasks/main.yml'
