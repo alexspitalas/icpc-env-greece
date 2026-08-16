@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  IntelliJ IDEA global Gradle settings (IDE-level options).
+  Placed at: ~/.config/JetBrains/IntelliJIdea2025.2/options/gradle.xml
+
+  This is the correct schema for the IDE-level options/gradle.xml file.
+  It sets:
+    - offlineWork: true  → "Offline work" checkbox in Settings > Gradle
+    - serviceDirectory   → the Gradle user home shown/used in the IDE UI
+    - linkedExternalProjectsSettings/GradleProjectSettings → the NEW PROJECT
+      defaults that IntelliJ applies when creating/importing a Gradle project,
+      so it picks LOCAL distribution instead of downloading via the wrapper.
+-->
+<application>
+  <component name="GradleSettings">
+    <option name="linkedExternalProjectsSettings">
+      <GradleProjectSettings>
+        <option name="distributionType" value="LOCAL" />
+        <option name="gradleHome" value="/opt/gradle/gradle-8.14.3" />
+        <option name="gradleJvm" value="#JAVA_HOME" />
+        <option name="offlineWork" value="true" />
+        <option name="gradleUserHome" value="/opt/gradle-home" />
+      </GradleProjectSettings>
+    </option>
+    <option name="offlineWork" value="true" />
+    <option name="serviceDirectory" value="/opt/gradle-home" />
+  </component>
+</application>
