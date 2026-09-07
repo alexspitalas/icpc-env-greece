@@ -16,6 +16,39 @@
   shell: code --extensions-dir /opt/vscode/extensions --user-data-dir /opt/vscode --no-sandbox --install-extension {{ item }}
   loop: "{{ vscode_extensions }}"
 
+# Some extensions (e.g. vim/emacs keybindings) change the editor for everyone and
+# shouldn't be forced on. We keep them installed but seed VS Code's per-user
+# disabled-extensions list into /etc/skel so they are OFF by default; a contestant
+# who wants one just enables it in the Extensions view. /etc/skel is the seed for
+# every contestant created with `useradd -m` (incl. deleteUser.sh resets).
+- name: compute which installed extensions to disable by default
+  set_fact:
+    vscode_disabled_effective: "{{ vscode_disabled_by_default | default([]) | intersect(vscode_extensions) }}"
+
+- name: seed VS Code disabled-extensions defaults into skel (installed but off)
+  when: vscode_disabled_effective | length > 0
+  shell: |
+    python3 - <<'PY'
+    import json, os, sqlite3
+    ids = "{{ vscode_disabled_effective | join(' ') }}".split()
+    base = "/etc/skel/.config/Code/User/globalStorage"
+    os.makedirs(base, exist_ok=True)
+    disabled = [{"id": i} for i in ids]
+    value = json.dumps(disabled)
+    # Legacy JSON store (older VS Code builds read this).
+    with open(os.path.join(base, "storage.json"), "w") as f:
+        json.dump({"extensionsIdentifiers/disabled": disabled}, f)
+    # Current SQLite store (state.vscdb) used by recent VS Code builds.
+    con = sqlite3.connect(os.path.join(base, "state.vscdb"))
+    con.execute("CREATE TABLE IF NOT EXISTS ItemTable (key TEXT UNIQUE ON CONFLICT REPLACE, value BLOB)")
+    con.execute("INSERT OR REPLACE INTO ItemTable (key, value) VALUES (?, ?)",
+                ("extensionsIdentifiers/disabled", value))
+    con.commit()
+    con.close()
+    PY
+  args:
+    executable: /bin/bash
+
 - name: create a script to symlink our extensions
   copy:
     dest: /usr/local/bin/vscode-extension-install
