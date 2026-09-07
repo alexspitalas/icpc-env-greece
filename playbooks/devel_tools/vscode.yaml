@@ -16,11 +16,13 @@
   shell: code --extensions-dir /opt/vscode/extensions --user-data-dir /opt/vscode --no-sandbox --install-extension {{ item }}
   loop: "{{ vscode_extensions }}"
 
-# Some extensions (e.g. vim/emacs keybindings) change the editor for everyone and
-# shouldn't be forced on. We keep them installed but seed VS Code's per-user
-# disabled-extensions list into /etc/skel so they are OFF by default; a contestant
-# who wants one just enables it in the Extensions view. /etc/skel is the seed for
-# every contestant created with `useradd -m` (incl. deleteUser.sh resets).
+# TODO: This is intentionally over-permissive; some extension files need
+# execute permissions for C/C++ tooling to work. Narrow this down later.
+- name: make vscode extension files executable
+  shell: find /opt/vscode/extensions -type f -exec chmod 755 {} +
+
+
+
 - name: compute which installed extensions to disable by default
   set_fact:
     vscode_disabled_effective: "{{ vscode_disabled_by_default | default([]) | intersect(vscode_extensions) }}"
@@ -48,6 +50,7 @@
     PY
   args:
     executable: /bin/bash
+
 
 - name: create a script to symlink our extensions
   copy:
