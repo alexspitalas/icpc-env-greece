@@ -89,9 +89,9 @@ firefox_policies:
   # Add some bookmark entries (and always show the bookmarks toolbar)
   DisplayBookmarksToolbar: true
   Bookmarks:
-    - Title: "Programming Docs"
-      URL: "file:///opt/localwww/index.html"
-      Placement: "toolbar"
+#   - Title: "Programming Docs"
+#     URL: "file:///opt/localwww/index.html"
+#     Placement: "toolbar"
     - Title: "Help Guide"
       URL: "file:///htmlfile/documentHtml/index.html"
       Placement: "toolbar"
