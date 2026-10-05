@@ -20,10 +20,10 @@ allowed_domains:
   - docs.oracle.com
   - domjudge.org
   - grcpc.gr
-  - seerc2025.algotester.com
-  - seerc.euc.icpc.global
-  - scoreboard-seerc.icpc.global
-  - judge-seerc.icpc.global
+#  - seerc2025.algotester.com
+#  - seerc.euc.icpc.global
+#  - scoreboard-seerc.icpc.global
+#  - judge-seerc.icpc.global
 
 
 
@@ -38,14 +38,14 @@ languages:
   - kotlin
 
 devtools:
- # - codeblocks
-#  - geany
-#  - vscode
-#  - eclipse
-#  - netbeans
+  - codeblocks
+  - geany
+  - vscode
+  - eclipse
+  - netbeans
   - intellij-idea
-#  - intellij-pycharm
-#  - intellij-clion
+  - intellij-pycharm
+  - intellij-clion
 
 
 vscode_extensions:
@@ -95,18 +95,18 @@ firefox_policies:
     - Title: "Help Guide"
       URL: "file:///htmlfile/documentHtml/index.html"
       Placement: "toolbar"
-    - Title: "Domjudge"
-      URL: "http://judge-seerc.icpc.global"
-      Placement: "toolbar"
-    - Title: "algotester"
-      URL: "http://seerc2025.algotester.com"
-      Placement: "toolbar"
-    - Title: "Global Scoreboard"
-      URL: "http://scoreboard-seerc.icpc.global"
-      Placement: "toolbar"
-#    - Title: GRCPC
-#      URL: "http://grcpc.gr"
+#    - Title: "Domjudge"
+#      URL: "http://judge-seerc.icpc.global"
 #      Placement: "toolbar"
+#    - Title: "algotester"
+#      URL: "http://seerc2025.algotester.com"
+#      Placement: "toolbar"
+#    - Title: "Global Scoreboard"
+#      URL: "http://scoreboard-seerc.icpc.global"
+#      Placement: "toolbar"
+    - Title: GRCPC
+      URL: "http://grcpc.gr"
+      Placement: "toolbar"
 
 firefox_default_policies:
   # Disable internet checking (it'll fail when the proxy is on so we want to avoid the notification banner)
@@ -145,3 +145,6 @@ firefox_default_policies:
     SkipOnboard: true
     MoreFromMozilla: false
     Locked: true
+
+clion_license_key: 
+  ""
