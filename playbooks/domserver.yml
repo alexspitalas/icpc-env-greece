@@ -24,7 +24,7 @@
 
 - name: Add Docker repository
   apt_repository:
-    repo: deb [signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu focal stable
+    repo: deb [signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu {{ ansible_distribution_release }} stable
     state: present
 
 - name: Update apt package index
@@ -69,7 +69,7 @@
 - name: Run DOMserver container with specified environment variables
   docker_container:
     name: domserver
-    image: domjudge/domserver:latest
+    image: domjudge/domserver:8.3.1
     state: started
     restart_policy: always
     env:

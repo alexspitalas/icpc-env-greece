@@ -11,11 +11,27 @@ devtools:
   - vscode
 
 vscode_extensions:
+  # C/C++
+  - ms-vscode.cpptools-extension-pack
+  # Python
+  - ms-python.python
+  - kevinrose.vsc-python-indent
+  - visualstudioexptteam.vscodeintellicode
+  # Java
+  - vscjava.vscode-java-pack
+  # Misc
+  - vscodevim.vim
+  - lfs.vscode-emacs-friendly
   # Themes
   - akamud.vscode-theme-onedark
   - akamud.vscode-theme-onelight
   - tgreen7.one-monokai-dark
   - jprestidge.theme-material-theme
+
+# Extensions that are installed (from vscode_extensions) but DISABLED by default.
+vscode_disabled_by_default:
+  - vscodevim.vim
+  - lfs.vscode-emacs-friendly
 
 # Firefox policies. Documented here:
 # https://mozilla.github.io/policy-templates/
