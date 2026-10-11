@@ -36,7 +36,7 @@ depending on connection speed and various other factors.
 
 1. Clone this repository:
 ```bash
-git clone https://github.com/SfikasTeo/icpc-env-greece.git
+git clone https://github.com/alexspitalas/icpc-env-greece
 cd icpc-env-greece
 ```
 1. Make sure dependencies are met

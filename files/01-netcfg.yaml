@@ -10,3 +10,20 @@ network:
         name: e*
       dhcp4: yes
       dhcp-identifier: mac
+
+# network:
+#   version: 2
+#   renderer: networkd
+#   ethernets:
+#     eth0:
+#       dhcp4: no
+#       addresses:
+#         - 150.xxx.xxx.xxx/25
+#       routes:
+#         - to: default
+#           via: 150.xxx.xxx.1
+#       nameservers:
+#         addresses: [150.xxx.xxx.xxx, 8.8.8.8]
+
+# When setting up the server you must set the IP to static (consult the net admin for an IP) by uncommenting the above lines and deleting the previous rules
+# After setting it up you must run "sudo netplan apply" to apply new settings
