@@ -65,7 +65,7 @@ cd icpc-env-greece
     ```
     PyCharm:
     ```bash
-    curl -O https://download-cdn.jetbrains.com/python/pycharm-2025.2.4.tar.gz
+    curl -O https://download.jetbrains.com/python/pycharm-2025.3.6.1.tar.gz
     ```
 
   * Download Kotlin zip into the `files/` directory
