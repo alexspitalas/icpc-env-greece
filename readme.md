@@ -46,13 +46,13 @@ cd icpc-env-greece
     sudo apt-get install qemu-system-x86 genisoimage ansible libarchive-tools xorriso python3-passlib # newer Debian based Distros without bsdtar
     sudo pacman -S qemu-system-x86 cdrtools libarchive ansible # Arch Based Distros
     ```
-  * Download the 64 bit version of Ubuntu 22.04.2 Server inside the cloned directory:
+  * Download the 64 bit version of Ubuntu 24.04 Server inside the cloned directory:
     ```bash
-    curl -O https://releases.ubuntu.com/releases/jammy/ubuntu-22.04.5-live-server-amd64.iso
+    curl -O https://releases.ubuntu.com/releases/24.04.4/ubuntu-24.04.4-live-server-amd64.iso
     ```
   * Download the 64 bit version of eclipse into the `files/` directory:
     ```bash
-    cd files && curl -O  https://ftp2.osuosl.org/pub/eclipse/technology/epp/downloads/release/2025-09/M1/eclipse-java-2025-09-M1-linux-gtk-x86_64.tar.gz
+    cd files && curl -O  https://ftp2.osuosl.org/pub/eclipse/technology/epp/downloads/release/2025-09/R/eclipse-java-2025-09-R-linux-gtk-x86_64.tar.gz
 
 1. Run secrets/gen-secrets.sh to create some ssh keys/other secret data. Follow this with ./fetch-secrets.sh to put them in the right place for ansible. Pass the ID of the contest as an argument on both scripts.
 ```bash

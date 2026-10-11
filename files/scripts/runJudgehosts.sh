@@ -26,5 +26,5 @@ do
         -e CONTAINER_TIMEZONE=Europe/Athens \
         -e DOMSERVER_BASEURL=http://$DOMSERVER_IP:$DOMSERVER_PORT/ \
         -e JUDGEDAEMON_PASSWORD=$JUDGEDAEMON_PASSWORD \
-        domjudge/judgehost:latest
+        domjudge/judgehost:8.3.1
 done
