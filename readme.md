@@ -141,3 +141,8 @@ functions.
 Once you have ansible performing all the tasks you need, halt the vm, then
 continue with the `build-final.sh` script. You should never use an image created
 by the `runvm.sh` script, always build images using `build-final.sh`
+
+
+## Reset Contestant
+To reset a contestant all you need to do is to `log out` from the contestant user and **log in** to the `Clear Team Account`. When you log in the reset script will automaticly start and it will recreate the `Contestant user` and will reboot the system.
+In case you want to use the command you can run the `delete-user` command on the admin side
