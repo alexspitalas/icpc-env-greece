@@ -45,7 +45,24 @@ http_access deny all
 # show a block page
 deny_info ICPC_ERR_ACCESS_DENIED all
 
+# ===== CONTEST SERVER AUTH =====
+# Inject the auth token (replaces the old tinyproxy AddHeader in playbooks/proxy.yaml).
+# Only sent to auth_token_domains so the token is not leaked to other whitelisted sites.
+# Works for https as well, since everything is ssl-bumped below.
+{% if auth_token is defined and auth_token and (auth_token_domains | default([])) | length > 0 %}
+{% for domain in auth_token_domains %}
+acl contest_server dstdomain .{{ domain }}
+{% endfor %}
+request_header_add Authorization "Bearer {{ auth_token }}" contest_server
+{% endif %}
+
 coredump_dir /var/spool/squid
+
+# Don't hold on to resolved IPs for long (default is up to 6 hours), so that
+# if a contest server (e.g. grcpc.gr) changes IP after the image was built/booted,
+# squid picks up the new address within a minute.
+positive_dns_ttl 1 minute
+negative_dns_ttl 5 seconds
 
 # To make it quick to restart squid, otherwise it takes ~30s to stop
 shutdown_lifetime 1 second

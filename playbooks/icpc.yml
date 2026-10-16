@@ -186,8 +186,20 @@
 
 - name: create team reset group
   group: name='teamreset' state='present'
+# Members of 'nopasswdlogin' can log in from the LightDM greeter without a password.
+# The account keeps its password, so su/tty/ssh logins as teamreset still require it.
+- name: ensure nopasswdlogin group exists
+  group: name='nopasswdlogin' state='present' system=yes
+- name: allow nopasswdlogin members to log in to lightdm without a password
+  lineinfile:
+    path: /etc/pam.d/lightdm
+    regexp: 'pam_succeed_if\.so\s+user\s+ingroup\s+nopasswdlogin'
+    line: 'auth    sufficient      pam_succeed_if.so user ingroup nopasswdlogin'
+    insertbefore: '^@include common-auth'
+# NOTE: teamreset is intentionally NOT in sudo/adm anymore. Anyone at the greeter can log in
+# to it without a password, and '%sudo' has NOPASSWD:ALL, so that would be a root shell.
 - name: create team reset user
-  user: name='teamreset' comment="Clear Team Account" group='teamreset' groups='sudo,adm,lpadmin' createhome=no password='{{icpcadmin_pass | password_hash('sha512') }}' shell='/bin/bash'
+  user: name='teamreset' comment="Clear Team Account" group='teamreset' groups='nopasswdlogin' append=no createhome=no password='{{icpcadmin_pass | password_hash('sha512') }}' shell='/bin/bash'
 - name: make home folder/autostart path
   file: state=directory path=/home/teamreset/.config/autostart owner=teamreset group=teamreset
 - name: create autostart file
@@ -197,10 +209,12 @@
   copy:
     dest: /etc/sudoers.d/icpcadmins
     mode: 0440
+    validate: 'visudo -cf %s'
     content: |
       # icpcadmin can run any command without a password
       icpcadmin ALL=NOPASSWD: ALL
-      teamreset ALL=NOPASSWD: ALL
+      # teamreset (passwordless greeter login) may only run the reset script
+      teamreset ALL=(root) NOPASSWD: /icpc/scripts/reset-team-account
 
 - name: set up firstboot configuration
   copy: src=files/firstboot.service dest=/etc/systemd/system/firstboot.service

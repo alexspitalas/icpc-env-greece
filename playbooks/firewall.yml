@@ -19,11 +19,26 @@
   notify: restart squid
 
 - name: configure squid
-  template: src=files/squid/squid.conf.j2 dest=/etc/squid/squid.conf
+  # contains auth_token, so keep it unreadable for the contestant
+  template: src=files/squid/squid.conf.j2 dest=/etc/squid/squid.conf owner=root group=proxy mode=0640
   notify: restart squid
 
 - name: make sure an autologin.conf file exists or squid won't start
   copy: content="#placeholder\n" dest=/etc/squid/autologin.conf mode=0640 owner=root group=root
+
+- name: ensure systemd-resolved drop-in directory exists
+  file: state=directory path=/etc/systemd/resolved.conf.d mode=0755
+
+- name: disable systemd-resolved DNS caching (so IP changes of the contest server are picked up quickly)
+  copy:
+    dest: /etc/systemd/resolved.conf.d/no-cache.conf
+    mode: '0644'
+    content: |
+      # squid resolves via the 127.0.0.53 stub. Don't cache there, so if the contest
+      # server changes IP after the image was built, the new IP is used right away.
+      [Resolve]
+      Cache=no
+  notify: restart systemd-resolved
 
 - name: copy a pretty error page for squid to use
   template: src=files/squid/block.html.j2 dest=/usr/share/squid/errors/templates/ICPC_ERR_ACCESS_DENIED

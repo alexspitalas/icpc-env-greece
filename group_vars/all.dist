@@ -9,6 +9,9 @@ icpcadmin_pass: icpcadmin
 
 #The auth token that is used to allow traffic to the server
 auth_token: "1234"
+# Domains (and their subdomains) that squid sends "Authorization: Bearer <auth_token>" to
+auth_token_domains:
+  - grcpc.gr
 
 # urls we are configured to send autologin credentials to
 # TODO: allow https as well :/

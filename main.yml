@@ -165,6 +165,9 @@
     - name: restart squid
       service: name=squid state=restarted
 
+    - name: restart systemd-resolved
+      service: name=systemd-resolved state=restarted
+
     - name: update-ca-certificates
       command: /usr/sbin/update-ca-certificates
 
