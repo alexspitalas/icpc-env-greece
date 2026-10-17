@@ -2,10 +2,10 @@
 Version=1.0
 Type=Application
 Name=Reset Team Account
-Comment=
-Exec=xfce4-terminal --execute sudo /icpc/scripts/reset-team-account
+Comment=Resets the team account (only acts when logged in as teamreset)
+Exec=/icpc/scripts/teamreset-autostart
 Icon=edit-clear
 Path=
-Terminal=true
+Terminal=false
 StartupNotify=false
 GenericName=

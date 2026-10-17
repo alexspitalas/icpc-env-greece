@@ -1,0 +1,10 @@
+[Unit]
+Description=ICPC reset the team account and reboot
+
+[Service]
+# Runs as root, detached from the teamreset login session, so closing the terminal,
+# pressing Ctrl+C or logging out can not interrupt the reset half way.
+# Not enabled: it is only started on demand (sudo systemctl start icpc-team-reset.service)
+Type=oneshot
+ExecStart=/icpc/scripts/reset-team-account
+TimeoutStartSec=0

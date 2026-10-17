@@ -202,8 +202,19 @@
   user: name='teamreset' comment="Clear Team Account" group='teamreset' groups='nopasswdlogin' append=no createhome=no password='{{icpcadmin_pass | password_hash('sha512') }}' shell='/bin/bash'
 - name: make home folder/autostart path
   file: state=directory path=/home/teamreset/.config/autostart owner=teamreset group=teamreset
-- name: create autostart file
-  copy: src=files/teamreset.desktop dest=/home/teamreset/.config/autostart/teamreset.desktop
+# The autostart entry lives in root-owned /etc/xdg/autostart (the script only acts for 'teamreset'),
+# so the teamreset user can't delete/edit it to avoid the reset. Remove the old per-user copy.
+- name: remove old per-user teamreset autostart file
+  file: path=/home/teamreset/.config/autostart/teamreset.desktop state=absent
+- name: create system-wide autostart file for the team reset
+  copy: src=files/teamreset.desktop dest=/etc/xdg/autostart/icpc-teamreset.desktop mode=0644 owner=root group=root
+
+# The actual reset runs as a detached root service, so closing the terminal / Ctrl+C / logging out
+# can't interrupt it half way.
+- name: install the team reset systemd unit
+  copy: src=files/systemd/icpc-team-reset.service dest=/etc/systemd/system/icpc-team-reset.service mode=0644 owner=root group=root
+- name: reload systemd to pick up the team reset unit
+  systemd: daemon_reload=yes
 
 - name: setup sudo for the admin
   copy:
@@ -213,8 +224,17 @@
     content: |
       # icpcadmin can run any command without a password
       icpcadmin ALL=NOPASSWD: ALL
-      # teamreset (passwordless greeter login) may only run the reset script
-      teamreset ALL=(root) NOPASSWD: /icpc/scripts/reset-team-account
+      # teamreset (passwordless greeter login) may ONLY start the reset unit (exact arguments,
+      # no shell, no other commands)
+      teamreset ALL=(root) NOPASSWD: /usr/bin/systemctl start --no-block icpc-team-reset.service
+      # contestant can refresh the contest connection without a password
+      contestant ALL=(root) NOPASSWD: /icpc/scripts/refresh-contest-ip.sh
+
+- name: symlink refresh-contest-ip to /usr/local/bin
+  file:
+    src: /icpc/scripts/refresh-contest-ip.sh
+    dest: /usr/local/bin/refresh-contest-ip
+    state: link
 
 - name: set up firstboot configuration
   copy: src=files/firstboot.service dest=/etc/systemd/system/firstboot.service

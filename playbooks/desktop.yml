@@ -18,6 +18,7 @@
   loop:
     - { name: 'Firefox', exec: 'firefox %u', icon: 'firefox' }
     - { name: 'Guide', exec: 'firefox /htmlfile/documentHtml/index.html', icon: 'firefox' }
+    - { name: 'Refresh Connection', exec: 'xfce4-terminal --title="Refresh Connection" --execute /icpc/scripts/refresh-contest-ip.sh', icon: 'network-wired' }
 
 
 # Create VS Code shortcut (always available)

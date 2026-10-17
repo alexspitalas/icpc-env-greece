@@ -179,5 +179,8 @@
         name: nginx
         state: reloaded
 
+    - name: reload ufw
+      command: ufw reload
+
     
 

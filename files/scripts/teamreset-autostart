@@ -1,0 +1,20 @@
+#!/bin/bash
+# Started from /etc/xdg/autostart for EVERY desktop session; only acts for 'teamreset'.
+# It lives in /etc (root owned), so the teamreset user can't remove or edit it.
+[ "$(id -un)" = "teamreset" ] || exit 0
+
+# Start the reset as a detached root service. This is the only thing teamreset may run as root
+# (see /etc/sudoers.d/icpcadmins), and it keeps running even if this session is killed.
+sudo /usr/bin/systemctl start --no-block icpc-team-reset.service
+
+# Just show a message until the machine reboots
+exec xfce4-terminal --disable-server --fullscreen --hide-menubar --hide-borders --execute bash -c '
+  trap "" INT QUIT TSTP
+  clear
+  echo "========================================"
+  echo "  Resetting the team account..."
+  echo "  The machine will reboot automatically."
+  echo "  Please do not touch anything."
+  echo "========================================"
+  while true; do sleep 1; done
+'
