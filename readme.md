@@ -67,6 +67,10 @@ cd icpc-env-greece
     ```bash
     curl -O https://download.jetbrains.com/python/pycharm-2025.3.6.1.tar.gz
     ```
+    NetBeans:
+    ```bash
+    curl -4 -O https://archive.apache.org/dist/netbeans/netbeans-installers/18/apache-netbeans_18-1_all.deb
+    ```
 
   * Download Kotlin zip into the `files/` directory
     ```bash

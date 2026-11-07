@@ -1,12 +1,14 @@
-# Install netbeans debian package
+# Install netbeans debian package from local files/ directory
+- name: Copy netbeans debian package
+  copy:
+    src: files/apache-netbeans_18-1_all.deb
+    dest: /tmp/apache-netbeans_18-1_all.deb
+
 - name: Install netbeans debian package
   apt:
-    deb: https://archive.apache.org/dist/netbeans/netbeans-installers/18/apache-netbeans_18-1_all.deb
+    deb: /tmp/apache-netbeans_18-1_all.deb
 
-#- name: install netbeans
-#  shell: |
-#    cd /tmp
-#    wget -q https://archive.apache.org/dist/netbeans/netbeans-installers/18/apache-netbeans_18-1_all.deb
-#    dpkg -i apache-netbeans_18-1_all.deb
-#    apt install -f -y
-#  become: yes
+- name: Clean up netbeans debian installer
+  file:
+    path: /tmp/apache-netbeans_18-1_all.deb
+    state: absent
