@@ -146,6 +146,19 @@ Once you have ansible performing all the tasks you need, halt the vm, then
 continue with the `build-final.sh` script. You should never use an image created
 by the `runvm.sh` script, always build images using `build-final.sh`
 
+### SSH Access to Built Image
+In the final image, SSH password authentication is disabled and `imageadmin` is removed. Only SSH key authentication is permitted via `ssh.service`:
+* Connect as the **`icpcadmin`** user using an authorized SSH key (e.g., `files/secrets/icpcadmin@contestmanager`, your local `~/.ssh/id_ed25519`, or a key listed in `icpcadmin_ssh_keys`):
+  ```bash
+  ssh -i files/secrets/icpcadmin@contestmanager icpcadmin@<ip_or_localhost>
+  ```
+* When testing under QEMU, run:
+  ```bash
+  ./connect2qemu.sh
+  ```
+  This connects as `icpcadmin` on the active port (5222 or 2222).
+* You can add custom public keys to `group_vars/all` under `icpcadmin_ssh_keys` prior to building.
+
 
 ## Reset Contestant
 To reset a contestant all you need to do is to `log out` from the contestant user and **log in** to the `Clear Team Account`. When you log in the reset script will automaticly start and it will recreate the `Contestant user` and will reboot the system.

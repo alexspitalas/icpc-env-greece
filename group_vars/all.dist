@@ -7,6 +7,15 @@ icpc_timezone: 'Europe/Athens'
 # That has access to the contest server.
 icpcadmin_pass: icpcadmin
 
+# SSH public keys authorized to connect as icpcadmin (and root).
+# Password authentication for SSH is completely disabled in the final image;
+# login is only allowed using SSH public keys or CA certificates.
+# By default, files/secrets/icpcadmin@contestmanager.pub (plus local host
+# ~/.ssh/id_ed25519.pub / ~/.ssh/id_rsa.pub if present) are automatically authorized.
+# Add any additional public keys here:
+icpcadmin_ssh_keys: []
+  # - "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAA..."
+
 #The auth token that is used to allow traffic to the server
 auth_token: "1234"
 # Domains (and their subdomains) that squid sends "Authorization: Bearer <auth_token>" to

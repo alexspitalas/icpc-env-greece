@@ -3,6 +3,16 @@
 ## Unreleased
 
 ### Security
+- **Enforced SSH key-only authentication (disabled password logins) and enabled `ssh.service`.**
+  Configured `/etc/ssh/sshd_config.d/01-ssh-keys-only.conf` with `PasswordAuthentication no`
+  and `KbdInteractiveAuthentication no`, disabled `ssh.socket`, and enabled `ssh.service`.
+- **Authorized admin SSH keys for `icpcadmin` and `root`.** Added authorized keys
+  setup for `files/secrets/icpcadmin@contestmanager.pub`, host public keys
+  (`~/.ssh/id_ed25519.pub` / `~/.ssh/id_rsa.pub`), and custom keys configured via
+  `icpcadmin_ssh_keys` in `group_vars/all` (without including the committed `imageadmin` build key).
+- **Updated `connect2qemu.sh` for post-build SSH access.** Updated `connect2qemu.sh`
+  to connect as `icpcadmin` using `files/secrets/icpcadmin@contestmanager` (or default key),
+  auto-detect ports 5222 and 2222, and remove unnecessary host sudo.
 - **Disabled tinyproxy (`playbooks/proxy.yaml`) in `main.yml`.** It listened on
   `localhost:8888` and forwarded to any destination with no domain whitelist.
   Because the UFW rules allow `127.0.0.1 -> 127.0.0.1`, a contestant could set
