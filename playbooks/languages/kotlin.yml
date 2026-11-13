@@ -89,6 +89,11 @@
     remote_src: yes
     creates: /opt/gradle/gradle-8.14.3
 
+- name: Remove downloaded Gradle archive
+  file:
+    path: /tmp/gradle-8.14.3-bin.zip
+    state: absent
+
 - name: Create symlink for gradle binary
   file:
     src: /opt/gradle/gradle-8.14.3/bin/gradle

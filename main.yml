@@ -51,11 +51,17 @@
             srcpkgcache "";
             pkgcache "";
           }
+          APT::Keep-Downloaded-Packages "false";
+          Binary::apt::APT::Keep-Downloaded-Packages "false";
           # No translations
           Acquire::Language "none";
 
     - name: be sure apt cache is updated
       apt: update_cache=yes upgrade=dist
+
+    - name: clean apt package archives after upgrade
+      apt:
+        clean: yes
 
     - name: set up efi booting
       apt:
