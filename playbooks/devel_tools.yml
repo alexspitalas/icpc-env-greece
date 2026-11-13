@@ -32,6 +32,11 @@
 
   - include_tasks: 'devel_tools/eclipse.yaml'
     when: "'eclipse' in devtools"
+
+  - name: clean apt cache before extracting JetBrains IDEs
+    apt:
+      clean: yes
+
   - name: Import JetBrains role
     import_role:
       name: 'jetbrains_ides'

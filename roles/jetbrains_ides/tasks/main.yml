@@ -11,7 +11,7 @@
   unarchive:
     src: "files/ideaIC-{{ intellij_version }}.tar.gz"
     dest: /opt/jetbrains/
-    creates: /opt/jetbrains/idea
+    creates: /usr/local/bin/idea
   become: yes
   when: "'intellij-idea' in devtools"
 
@@ -19,7 +19,7 @@
   unarchive:
     src: "files/pycharm-{{ pycharm_version }}.tar.gz"
     dest: /opt/jetbrains
-    creates: /opt/jetbrains/pycharm
+    creates: /usr/local/bin/pycharm
   become: yes
   when: "'intellij-pycharm' in devtools"
 
@@ -27,7 +27,7 @@
   unarchive:
     src: "files/CLion-{{ clion_version }}.tar.gz"
     dest: /opt/jetbrains
-    creates: /opt/jetbrains/clion
+    creates: /usr/local/bin/clion
   become: yes
   when: "'intellij-clion' in devtools and clion_license_key is defined and clion_license_key | length > 0"
 
