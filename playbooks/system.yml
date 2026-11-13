@@ -27,9 +27,28 @@
 - name: push a better default network interfaces file
   copy: src=files/01-netcfg.yaml dest=/etc/netplan/01-netcfg.yaml
 
-- name: disable console blanking
-  lineinfile: dest=/etc/default/grub regexp="^GRUB_CMDLINE_LINUX_DEFAULT" line='GRUB_CMDLINE_LINUX_DEFAULT="biosdevname=0 consoleblank=0 net.ifnames=0"' state=present
+- name: disable console blanking and configure usb stability parameters
+  lineinfile:
+    dest: /etc/default/grub
+    regexp: "^GRUB_CMDLINE_LINUX_DEFAULT"
+    line: 'GRUB_CMDLINE_LINUX_DEFAULT="biosdevname=0 consoleblank=0 net.ifnames=0 usbcore.autosuspend=-1 usbcore.lpm_disable=1 modprobe.blacklist=uas"'
+    state: present
   notify: update grub
+
+- name: tune vm dirty memory limits for usb flash drive stability
+  copy:
+    dest: /etc/sysctl.d/99-usb-flush.conf
+    content: |
+      # Prevent system freezes when flushing write buffers to USB flash drives
+      vm.dirty_background_bytes = 16777216
+      vm.dirty_bytes = 50331648
+
+- name: blacklist uas kernel module to enforce stable usb-storage mode
+  copy:
+    dest: /etc/modprobe.d/blacklist-uas.conf
+    content: |
+      # Force standard usb-storage BOT driver to prevent UAS controller hangs
+      blacklist uas
 
 - name: journald write to /dev/tty1
   copy: src=files/systemd-journald.conf dest=/etc/systemd/journald.conf

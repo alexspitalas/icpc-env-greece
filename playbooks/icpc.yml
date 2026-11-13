@@ -107,6 +107,79 @@
 - name: create icpcadmin user
   user: name='icpcadmin' comment="ICPC Local Admin" group='icpcadmin' groups='sudo,adm,lpadmin' password='{{ icpcadmin_pass | password_hash('sha512') }}' shell='/bin/bash'
 
+- name: ensure .ssh directory exists for icpcadmin
+  file:
+    path: /home/icpcadmin/.ssh
+    state: directory
+    owner: icpcadmin
+    group: icpcadmin
+    mode: '0700'
+
+- name: ensure .ssh directory exists for root
+  file:
+    path: /root/.ssh
+    state: directory
+    owner: root
+    group: root
+    mode: '0700'
+
+- name: check if icpcadmin@contestmanager.pub exists
+  stat:
+    path: files/secrets/icpcadmin@contestmanager.pub
+  delegate_to: 127.0.0.1
+  register: contestmanager_pubkey
+
+- name: add icpcadmin@contestmanager key to authorized_keys
+  ansible.posix.authorized_key:
+    user: "{{ item }}"
+    state: present
+    key: "{{ lookup('file', 'files/secrets/icpcadmin@contestmanager.pub') }}"
+  when: contestmanager_pubkey.stat.exists
+  loop:
+    - icpcadmin
+    - root
+
+- name: check if host user ed25519 public key exists
+  stat:
+    path: "{{ lookup('env', 'HOME') }}/.ssh/id_ed25519.pub"
+  delegate_to: 127.0.0.1
+  register: host_ed25519_pubkey
+
+- name: add host user ed25519 key to authorized_keys
+  ansible.posix.authorized_key:
+    user: "{{ item }}"
+    state: present
+    key: "{{ lookup('file', lookup('env', 'HOME') + '/.ssh/id_ed25519.pub') }}"
+  when: host_ed25519_pubkey.stat.exists
+  loop:
+    - icpcadmin
+    - root
+
+- name: check if host user rsa public key exists
+  stat:
+    path: "{{ lookup('env', 'HOME') }}/.ssh/id_rsa.pub"
+  delegate_to: 127.0.0.1
+  register: host_rsa_pubkey
+
+- name: add host user rsa key to authorized_keys
+  ansible.posix.authorized_key:
+    user: "{{ item }}"
+    state: present
+    key: "{{ lookup('file', lookup('env', 'HOME') + '/.ssh/id_rsa.pub') }}"
+  when: host_rsa_pubkey.stat.exists
+  loop:
+    - icpcadmin
+    - root
+
+- name: add custom ssh keys from group_vars to authorized_keys
+  ansible.posix.authorized_key:
+    user: "{{ item.0 }}"
+    state: present
+    key: "{{ item.1 }}"
+  with_nested:
+    - ['icpcadmin', 'root']
+    - "{{ icpcadmin_ssh_keys | default([]) }}"
+
 - name: create contestant group
   group: name='contestant' state='present'
 - name: create contestant user (with empty/blank password)
@@ -125,30 +198,48 @@
       	email = contestant@icpcenv
       	name = icpcenv
 
+- name: check if server_ca.pub exists
+  stat:
+    path: files/secrets/server_ca.pub
+  delegate_to: 127.0.0.1
+  register: server_ca_pub
+
 - name: copy ssh ca
   copy:
     src: files/secrets/server_ca.pub
     dest: /etc/ssh/ca.pub
     mode: 0644
+  when: server_ca_pub.stat.exists
 
 - name: configure ssh ca to be enabled for allowing users to log in
   copy:
-    content:
+    content: |
       TrustedUserCAKeys /etc/ssh/ca.pub
     dest: /etc/ssh/sshd_config.d/trusted-user-ca.conf
     mode: 0644
+  when: server_ca_pub.stat.exists
+  notify: restart ssh
 
 - name: configure ssh ca to be trusted for host verification
   shell: echo "@cert-authority * $(cat /etc/ssh/ca.pub)" >>/etc/ssh/ssh_known_hosts
+  when: server_ca_pub.stat.exists
+
+- name: check if host keys exist
+  stat:
+    path: files/secrets/contestant.icpcnet.internal_host_ed25519_key
+  delegate_to: 127.0.0.1
+  register: host_ed25519_key_file
 
 - name: Install a set of host keys that are signed by the ssh CA
   copy:
     src: files/secrets/contestant.icpcnet.internal_{{ item }}
     dest: /etc/ssh/ssh_{{ item }}
+    mode: "{{ '0600' if 'key' in item and 'pub' not in item else '0644' }}"
   with_items:
     - host_ed25519_key
     - host_ed25519_key.pub
     - host_ed25519_key-cert.pub
+  when: host_ed25519_key_file.stat.exists
 
 - name: sshd host certificate
   copy:
@@ -157,7 +248,43 @@
       HostCertificate /etc/ssh/ssh_host_ed25519_key-cert.pub
     dest: /etc/ssh/sshd_config.d/ssh_host_cert.conf
     mode: 0644
+  when: host_ed25519_key_file.stat.exists
   notify: restart ssh
+
+- name: ensure openssh-server is installed
+  apt:
+    name: openssh-server
+    state: present
+
+- name: configure sshd to allow only ssh key authentication (disable passwords)
+  copy:
+    content: |
+      # Enforce SSH key-only authentication; disable password logins
+      PasswordAuthentication no
+      KbdInteractiveAuthentication no
+      PubkeyAuthentication yes
+      PermitEmptyPasswords no
+    dest: /etc/ssh/sshd_config.d/01-ssh-keys-only.conf
+    mode: 0644
+  notify: restart ssh
+
+- name: remove cloud-init sshd configuration drop-in if present
+  file:
+    path: /etc/ssh/sshd_config.d/50-cloud-init.conf
+    state: absent
+  notify: restart ssh
+
+- name: validate sshd configuration
+  command: sshd -t
+  changed_when: false
+
+- name: ensure ssh.service is enabled and running (disable ssh.socket on Ubuntu 24.04)
+  shell: |
+    if systemctl is-enabled ssh.socket >/dev/null 2>&1 || systemctl is-active ssh.socket >/dev/null 2>&1; then
+      systemctl disable --now ssh.socket
+    fi
+    systemctl enable --now ssh.service
+  changed_when: false
 
 
 - name: create gitconfig for icpcadmin(to make updating the home directory easier)
