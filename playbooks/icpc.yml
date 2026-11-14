@@ -274,6 +274,14 @@
     state: absent
   notify: restart ssh
 
+- name: ensure ssh privilege separation directory exists
+  file:
+    path: /run/sshd
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+
 - name: validate sshd configuration
   command: sshd -t
   changed_when: false
