@@ -23,6 +23,9 @@ sleep 5
 # Reset the team(and any defaults)
 $UTILDIR/scripts/deleteUser.sh
 
+# Ensure firstboot setup runs on the distributed image
+rm -f $UTILDIR/setup-complete
+
 # reset the TEAM and SITE
 echo "default team" > $UTILDIR/TEAM
 echo "default site" > $UTILDIR/SITE

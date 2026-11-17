@@ -26,6 +26,29 @@ auth_token_domains:
 # TODO: allow https as well :/
 squid_autologin_urls: []
   # - ^http://ser2019.cloudcontest.org/login
+
+# URL of the contest judging system shown by the "Judge System" button in the Firefox guide.
+# If left empty while domjudge_enabled is true, domjudge_url is used automatically.
+judge_system_url: ""
+
+# ===== DOMjudge Configuration =====
+# Set to true when the contest is hosted on DOMjudge.
+# When false, DOMjudge submit client configuration, boot credential prompts,
+# and Squid X-Header auto-login are disabled.
+domjudge_enabled: false
+
+# Base URL of the DOMjudge server (without the trailing 'team/' suffix),
+# e.g. "https://judge.example.com/"
+domjudge_url: ""
+
+# Optional: Contest ID or short name for `submit` (needed if multiple contests are active)
+domjudge_contest: ""
+
+# Optional: Pre-configured team credentials for DOMjudge.
+# If either is left empty while domjudge_enabled is true, the system will prompt
+# for the team username and password on boot and save them to /icpc/domjudge_credentials.
+domjudge_username: ""
+domjudge_password: ""
 allowed_domains:
   - cppreference.com
   - docs.python.org

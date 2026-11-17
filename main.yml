@@ -121,6 +121,7 @@
     - import_tasks: 'playbooks/desktop.yml'
 
     - import_tasks: 'playbooks/firewall.yml'
+    - import_tasks: 'playbooks/domjudge.yml'
 
     # Management related things
     #- import_tasks: 'playbooks/ansible-pull.yml'
@@ -150,14 +151,17 @@
     #     rm -f /empty
     #     sync
 
-    - name: Add delete-user alias for admin
+    - name: Add delete-user and full-reset aliases for admin
       lineinfile:
         path: /home/icpcadmin/.bashrc
-        line: 'alias delete-user="sudo /icpc/scripts/deleteUser.sh"'
+        line: "{{ item }}"
         create: yes
         owner: icpcadmin
         group: icpcadmin
         mode: '0644'
+      loop:
+        - 'alias delete-user="sudo /icpc/scripts/deleteUser.sh"'
+        - 'alias full-reset="sudo /icpc/scripts/full_reset.sh"'
 
     
 

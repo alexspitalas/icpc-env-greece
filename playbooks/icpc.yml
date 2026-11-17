@@ -32,6 +32,26 @@
     content: |
       export PATH="/icpc/scripts:$PATH"
 
+- name: ensure interactive non-login bash shells load DOMjudge environment if configured
+  lineinfile:
+    path: /etc/bash.bashrc
+    line: '[ -r /etc/profile.d/domjudge.sh ] && . /etc/profile.d/domjudge.sh'
+    state: present
+
+- name: install DOMjudge command-line submit client
+  copy:
+    src: files/domjudge/submit
+    dest: /usr/local/bin/submit
+    owner: root
+    group: root
+    mode: '0755'
+
+- name: symlink djprint to /usr/local/bin
+  file:
+    src: /icpc/scripts/djprint
+    dest: /usr/local/bin/djprint
+    state: link
+
 - name: copy icpc default wallpaper
   copy: dest=/icpc/wallpaper.png src=files/wallpaper.png
 
@@ -84,6 +104,8 @@
       - cups-bsd
       - enscript
       - python3-typing-extensions # needed for firstboot script
+      - python3-requests          # needed for DOMjudge submit client
+      - python3-magic             # optional file type detection for DOMjudge submit client
 
       # experimental programs to support showing a banner image to all contestants
       - feh # to display fullscreen images
@@ -348,7 +370,21 @@
 # can't interrupt it half way.
 - name: install the team reset systemd unit
   copy: src=files/systemd/icpc-team-reset.service dest=/etc/systemd/system/icpc-team-reset.service mode=0644 owner=root group=root
-- name: reload systemd to pick up the team reset unit
+
+- name: create full reset group
+  group: name='fullreset' state='present'
+# NOTE: fullreset is intentionally NOT in sudo/adm. Anyone at the greeter can log in
+# to it without a password (via nopasswdlogin), so it may only start icpc-full-reset.service.
+- name: create full reset user
+  user: name='fullreset' comment="Full Reset" group='fullreset' groups='nopasswdlogin' append=no createhome=no password='{{icpcadmin_pass | password_hash('sha512') }}' shell='/bin/bash'
+- name: make home folder/autostart path for fullreset
+  file: state=directory path=/home/fullreset/.config/autostart owner=fullreset group=fullreset
+- name: create system-wide autostart file for the full reset
+  copy: src=files/fullreset.desktop dest=/etc/xdg/autostart/icpc-fullreset.desktop mode=0644 owner=root group=root
+- name: install the full reset systemd unit
+  copy: src=files/systemd/icpc-full-reset.service dest=/etc/systemd/system/icpc-full-reset.service mode=0644 owner=root group=root
+
+- name: reload systemd to pick up the reset units
   systemd: daemon_reload=yes
 
 - name: setup sudo for the admin
@@ -362,6 +398,8 @@
       # teamreset (passwordless greeter login) may ONLY start the reset unit (exact arguments,
       # no shell, no other commands)
       teamreset ALL=(root) NOPASSWD: /usr/bin/systemctl start --no-block icpc-team-reset.service
+      # fullreset (passwordless greeter login) may ONLY start the full reset unit
+      fullreset ALL=(root) NOPASSWD: /usr/bin/systemctl start --no-block icpc-full-reset.service
       # contestant can refresh the contest connection without a password
       contestant ALL=(root) NOPASSWD: /icpc/scripts/refresh-contest-ip.sh
 

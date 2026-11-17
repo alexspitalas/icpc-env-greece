@@ -10,8 +10,12 @@ do
 done
 lpadmin -x ContestPrinter
 
+# clear saved DOMjudge credentials before recreating the user so .netrc is not restored
+rm -f /icpc/domjudge_credentials
+
 # clear the user
 /icpc/scripts/deleteUser.sh
+rm -f /home/contestant/.netrc
 
 # make sure the firewall is on
 ufw --force enable
@@ -23,7 +27,11 @@ rm -f /icpc/SITE
 # reset squid autologin
 echo "# Placeholder" > /etc/squid/autologin.conf
 chmod 640 /etc/squid/autologin.conf
-chown root:root /etc/squid/autologin.conf
+if getent group proxy >/dev/null 2>&1; then
+  chown root:proxy /etc/squid/autologin.conf
+else
+  chown root:root /etc/squid/autologin.conf
+fi
 
 # clear self test report
 rm -f /icpc/self_test_report

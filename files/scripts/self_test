@@ -71,8 +71,23 @@ NOSITE="${RED}Not Set${RESET}"
 SITENAME="${SITENAME:-$NOSITE}"
 echo $SITENAME
 
-# only check domjudge autologin if there are autologin urls defined
-if grep -q 'acl autologin url_regex' /etc/squid/squid.conf ; then
+# check DOMjudge configuration if enabled or autologin urls are defined
+DOMJUDGE_ENABLED=$(cat /icpc/DOMJUDGE_ENABLED 2>/dev/null)
+if [ "$DOMJUDGE_ENABLED" = "true" ] || grep -q 'acl autologin url_regex' /etc/squid/squid.conf ; then
+  print_check "DOMjudge Enabled"
+  echo "${GREEN}Yes${RESET}"
+
+  print_check "DOMjudge URL"
+  DJURL="$(cat /icpc/DOMJUDGE_URL 2>/dev/null)"
+  echo "${DJURL:-${RED}Not Set${RESET}}"
+
+  print_check "DOMjudge Submit Client"
+  if [ -x /usr/local/bin/submit ] && [ -s /home/contestant/.netrc ]; then
+    print_ok
+  else
+    print_fail
+  fi
+
   print_check "DOMjudge Autologin Configured"
   cat /etc/squid/autologin.conf 2>/dev/null | grep "X-DOMjudge" > /dev/null
   if [ $? -eq 0 ]; then
@@ -114,14 +129,23 @@ print_check "Testing access to google is blocked with a proxy error"
 curl -s --proxy http://127.0.0.1:3128 http://google.com 2>/dev/null | grep "<h1>Access Denied</h1>" > /dev/null
 check_return $?
 
-while IFS="" read -r url ; do
-  [ -z "$url" ] && continue
-  print_check "Testing access to $url is successful with proxy"
-  # wget -e use_proxy=yes -T 5 -t 1 -e http_proxy=127.0.0.1:3128 -e https_proxy=127.0.0.1:3128 -O- --no-check-certificate $url 2>/dev/null | grep -i "html" > /dev/null
-  curl --proxy http://127.0.0.1:3128 --connect-timeout 5 --max-time 10 --silent -o /dev/null --fail $url
+if [ -f /icpc/config_homepage ]; then
+  while IFS="" read -r url ; do
+    [ -z "$url" ] && continue
+    print_check "Testing access to $url is successful with proxy"
+    # wget -e use_proxy=yes -T 5 -t 1 -e http_proxy=127.0.0.1:3128 -e https_proxy=127.0.0.1:3128 -O- --no-check-certificate $url 2>/dev/null | grep -i "html" > /dev/null
+    curl --proxy http://127.0.0.1:3128 --connect-timeout 5 --max-time 10 --silent -o /dev/null --fail $url
+    check_return $?
+    break # only check one url from the list
+  done < /icpc/config_homepage
+fi
+
+if [ "$DOMJUDGE_ENABLED" = "true" ] && [ -s /icpc/DOMJUDGE_URL ]; then
+  DJURL="$(cat /icpc/DOMJUDGE_URL 2>/dev/null)"
+  print_check "Testing access to DOMjudge ($DJURL) with proxy"
+  curl --proxy http://127.0.0.1:3128 --connect-timeout 5 --max-time 10 --silent -L -o /dev/null --fail "$DJURL"
   check_return $?
-  break # only check one url from the list
-done < /icpc/config_homepage
+fi
 
 print_check "Testing direct internet access is disabled"
 su - contestant -c 'curl --noproxy "*" --connect-timeout 5 --max-time 10 --silent --fail -o /dev/null http://google.com' 2>/dev/null

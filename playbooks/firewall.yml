@@ -15,6 +15,36 @@
       {% for domain in allowed_domains %}
       .{{ domain }}
       {% endfor %}
+      {% if domjudge_enabled | default(false) and (domjudge_url | default('') | length > 0) %}
+      {% set dj_host = (domjudge_url | urlsplit('hostname')) | default('', true) %}
+      {% set dj_covered = namespace(found=false) %}
+      {% for d in allowed_domains %}
+      {% if dj_host == d or dj_host.endswith('.' ~ d) %}
+      {% set dj_covered.found = true %}
+      {% endif %}
+      {% endfor %}
+      {% if dj_host and not dj_covered.found %}
+      {{ dj_host if (dj_host is match('^([0-9]{1,3}\\.){3}[0-9]{1,3}$') or (':' in dj_host)) else '.' ~ dj_host }}
+      {% endif %}
+      {% endif %}
+      {% if judge_system_url | default('') | length > 0 %}
+      {% set js_host = (judge_system_url | urlsplit('hostname')) | default('', true) %}
+      {% set js_covered = namespace(found=false) %}
+      {% for d in allowed_domains %}
+      {% if js_host == d or js_host.endswith('.' ~ d) %}
+      {% set js_covered.found = true %}
+      {% endif %}
+      {% endfor %}
+      {% if domjudge_enabled | default(false) and (domjudge_url | default('') | length > 0) %}
+      {% set dj_host2 = (domjudge_url | urlsplit('hostname')) | default('', true) %}
+      {% if js_host == dj_host2 %}
+      {% set js_covered.found = true %}
+      {% endif %}
+      {% endif %}
+      {% if js_host and not js_covered.found %}
+      {{ js_host if (js_host is match('^([0-9]{1,3}\\.){3}[0-9]{1,3}$') or (':' in js_host)) else '.' ~ js_host }}
+      {% endif %}
+      {% endif %}
 
   notify: restart squid
 
@@ -24,7 +54,7 @@
   notify: restart squid
 
 - name: make sure an autologin.conf file exists or squid won't start
-  copy: content="#placeholder\n" dest=/etc/squid/autologin.conf mode=0640 owner=root group=root
+  copy: content="#placeholder\n" dest=/etc/squid/autologin.conf mode=0640 owner=root group=proxy force=no
 
 - name: ensure systemd-resolved caching is enabled (no-cache drop-in absent)
   file:
@@ -83,6 +113,10 @@
   lineinfile: dest=/etc/ufw/before.rules line="-I ufw-before-output -m owner --uid-owner teamreset -j REJECT" insertbefore="uid-owner contestant -j REJECT" state=present
   notify: reload ufw
 
+- name: prevent the 'fullreset' user from using the network
+  lineinfile: dest=/etc/ufw/before.rules line="-I ufw-before-output -m owner --uid-owner fullreset -j REJECT" insertbefore="uid-owner contestant -j REJECT" state=present
+  notify: reload ufw
+
 - name: Allow the contestant user(and others) to talk to localhost from localhost). Fixes issue with intellij/eclipse compilation/debugging.
   lineinfile: dest=/etc/ufw/before.rules line="-I ufw-before-output -s 127.0.0.1 -d 127.0.0.1 -j ACCEPT" insertafter="uid-owner contestant -j REJECT" state=present
   notify: reload ufw
@@ -93,6 +127,10 @@
 
 - name: prevent the 'teamreset' user from using IPv6 network
   lineinfile: dest=/etc/ufw/before6.rules line="-I ufw6-before-output -m owner --uid-owner teamreset -j REJECT" insertbefore="uid-owner contestant -j REJECT" state=present
+  notify: reload ufw
+
+- name: prevent the 'fullreset' user from using IPv6 network
+  lineinfile: dest=/etc/ufw/before6.rules line="-I ufw6-before-output -m owner --uid-owner fullreset -j REJECT" insertbefore="uid-owner contestant -j REJECT" state=present
   notify: reload ufw
 
 - name: Allow localhost IPv6 traffic

@@ -64,12 +64,24 @@
       APT::Periodic::Update-Package-Lists "0";
       APT::Periodic::Unattended-Upgrade "0";
 
+- name: build effective firefox policies (add DOMjudge bookmark if enabled and missing)
+  set_fact:
+    effective_firefox_policies: >-
+      {%- set base = firefox_default_policies | combine(firefox_policies) -%}
+      {%- set bookmarks = base.Bookmarks | default([]) -%}
+      {%- set has_dj = bookmarks | selectattr('Title', 'defined') | selectattr('Title', 'match', '(?i)^domjudge$') | list | length > 0 -%}
+      {%- if (domjudge_enabled | default(false)) and (domjudge_url | default('') | length > 0) and (not has_dj) -%}
+        {{ base | combine({'Bookmarks': bookmarks + [{'Title': 'DOMjudge', 'URL': domjudge_url, 'Placement': 'toolbar'}]}) }}
+      {%- else -%}
+        {{ base }}
+      {%- endif -%}
+
 - name: Configure firefox policies (trust squid cert, homepage/bookmarks/etc)
   copy:
     dest: /usr/lib/firefox/distribution/policies.json
     content: |
       {
         "policies":
-        {{ firefox_default_policies|combine(firefox_policies)|to_nice_json }}
+        {{ effective_firefox_policies|to_nice_json }}
       }
 

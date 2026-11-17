@@ -40,6 +40,11 @@ echo "Recreating contestant user"
 useradd -d /home/contestant -m contestant -G lpadmin -s /bin/bash
 passwd -d contestant
 
+# Restore DOMjudge ~/.netrc if DOMjudge credentials are saved
+if [[ -x /icpc/scripts/domjudge_apply_creds ]]; then
+    /icpc/scripts/domjudge_apply_creds
+fi
+
 # RESTORE: Bring back important files
 echo "Restoring critical files..."
 
