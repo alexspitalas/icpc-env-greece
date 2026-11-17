@@ -64,6 +64,21 @@
       Type=Application
       Terminal=false
 
+# Create Sublime Text shortcut - only if 'sublime' or 'sublime-text' in devtools
+- name: Create Sublime Text desktop shortcut
+  when: "('sublime' in devtools) or ('sublime-text' in devtools)"
+  copy:
+    dest: /root/DesktopTemplates/SublimeText.desktop
+    mode: '0755'
+    content: |
+      [Desktop Entry]
+      Name=Sublime Text
+      Comment=Text Editor for ICPC
+      Exec=/opt/sublime_text/sublime_text %F
+      Icon=sublime-text
+      Type=Application
+      Terminal=false
+
 # Create Eclipse shortcut - only if 'eclipse' in devtools
 - name: Create Eclipse desktop shortcut
   when: "'eclipse' in devtools"

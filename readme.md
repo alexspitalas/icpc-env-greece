@@ -71,6 +71,10 @@ cd icpc-env-greece
     ```bash
     curl -4 -O https://archive.apache.org/dist/netbeans/netbeans-installers/18/apache-netbeans_18-1_all.deb
     ```
+    Sublime Text (Build 4200):
+    ```bash
+    curl -O https://download.sublimetext.com/sublime-text_build-4200_amd64.deb
+    ```
 
   * Download Kotlin zip into the `files/` directory
     ```bash

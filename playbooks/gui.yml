@@ -47,10 +47,15 @@
   apt:
     state: present
     pkg:
-      - firefox   # Web browser (from ppa, not snap)
-      - alacarte  # Menu editor
-      - mupdf     # Lighweight pdf viewer
-      - mate-calc # GUI calculator
+      - firefox               # Web browser (from ppa, not snap)
+      - alacarte              # Menu editor
+      - mupdf                 # Lighweight pdf viewer
+      - mate-calc             # GUI calculator
+      - thunar-archive-plugin # Right-click "Extract Here" / "Extract To..." in Thunar & Desktop
+      - xarchiver             # GUI archive manager when double-clicking .zip/.tar.gz files
+      - unzip                 # ZIP extraction backend
+      - zip                   # ZIP creation backend
+      - p7zip-full            # 7z/zip/tar archive backend
 
 - name: Remove unneeded packages
   apt:
