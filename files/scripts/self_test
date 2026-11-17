@@ -78,7 +78,7 @@ if [ "$DOMJUDGE_ENABLED" = "true" ] || grep -q 'acl autologin url_regex' /etc/sq
   echo "${GREEN}Yes${RESET}"
 
   print_check "DOMjudge URL"
-  DJURL="$(cat /icpc/DOMJUDGE_URL 2>/dev/null)"
+  DJURL="$(cat /icpc/JUDGE_SYSTEM_URL 2>/dev/null)"
   echo "${DJURL:-${RED}Not Set${RESET}}"
 
   print_check "DOMjudge Submit Client"
@@ -102,6 +102,16 @@ fi
 
 echo
 echo "${BLUE}Printing Configuration${RESET}"
+PRINT_MODE_VAL="$(cat /icpc/PRINT_MODE 2>/dev/null)"
+if [ -n "$PRINT_MODE_VAL" ]; then
+  print_check "Print Mode"
+  echo "$PRINT_MODE_VAL"
+fi
+PRINT_TEAM_VAL="$(cat /icpc/PRINT_TEAM 2>/dev/null)"
+if [ -n "$PRINT_TEAM_VAL" ]; then
+  print_check "Print Team Header"
+  echo "$PRINT_TEAM_VAL"
+fi
 print_check "Making sure cups is running"
 check_service 'cups'
 PRINTERS=$(lpstat -v 2>/dev/null| grep -v ContestPrinter | sed -e 's|socket://||' -e 's|:||' | awk '{printf "    %-56s%s\n", $3, $4}')
@@ -140,8 +150,8 @@ if [ -f /icpc/config_homepage ]; then
   done < /icpc/config_homepage
 fi
 
-if [ "$DOMJUDGE_ENABLED" = "true" ] && [ -s /icpc/DOMJUDGE_URL ]; then
-  DJURL="$(cat /icpc/DOMJUDGE_URL 2>/dev/null)"
+if [ "$DOMJUDGE_ENABLED" = "true" ] && [ -s /icpc/JUDGE_SYSTEM_URL ]; then
+  DJURL="$(cat /icpc/JUDGE_SYSTEM_URL 2>/dev/null)"
   print_check "Testing access to DOMjudge ($DJURL) with proxy"
   curl --proxy http://127.0.0.1:3128 --connect-timeout 5 --max-time 10 --silent -L -o /dev/null --fail "$DJURL"
   check_return $?

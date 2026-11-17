@@ -1,0 +1,20 @@
+#!/bin/sh
+# Wrapper around DOMjudge `submit` so `-P` / `--print` routes to a configured
+# external print server (`ipp`, `cups`, `http`) when PRINT_MODE != domjudge.
+ICPC_DIR="${ICPC_DIR:-/icpc}"
+PRINT_MODE="$(cat "$ICPC_DIR/PRINT_MODE" 2>/dev/null || echo "domjudge")"
+
+if [ "$PRINT_MODE" = "ipp" ] || [ "$PRINT_MODE" = "cups" ] || [ "$PRINT_MODE" = "http" ]; then
+    for arg in "$@"; do
+        case "$arg" in
+            --)
+                break
+                ;;
+            -P|--print)
+                exec /usr/local/bin/djprint "$@"
+                ;;
+        esac
+    done
+fi
+
+exec /usr/local/bin/domjudge-submit "$@"

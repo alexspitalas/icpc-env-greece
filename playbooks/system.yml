@@ -70,8 +70,8 @@
       {%- set base = firefox_default_policies | combine(firefox_policies) -%}
       {%- set bookmarks = base.Bookmarks | default([]) -%}
       {%- set has_dj = bookmarks | selectattr('Title', 'defined') | selectattr('Title', 'match', '(?i)^domjudge$') | list | length > 0 -%}
-      {%- if (domjudge_enabled | default(false)) and (domjudge_url | default('') | length > 0) and (not has_dj) -%}
-        {{ base | combine({'Bookmarks': bookmarks + [{'Title': 'DOMjudge', 'URL': domjudge_url, 'Placement': 'toolbar'}]}) }}
+      {%- if (domjudge_enabled | default(false)) and (judge_system_url | default('') | trim | length > 0) and (not has_dj) -%}
+        {{ base | combine({'Bookmarks': bookmarks + [{'Title': 'DOMjudge', 'URL': (judge_system_url | trim), 'Placement': 'toolbar'}]}) }}
       {%- else -%}
         {{ base }}
       {%- endif -%}

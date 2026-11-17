@@ -1,0 +1,11 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Full Reset
+Comment=Performs a full system reset (only acts when logged in as fullreset)
+Exec=/icpc/scripts/fullreset-autostart
+Icon=edit-clear
+Path=
+Terminal=false
+StartupNotify=false
+GenericName=

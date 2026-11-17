@@ -38,9 +38,17 @@
     line: '[ -r /etc/profile.d/domjudge.sh ] && . /etc/profile.d/domjudge.sh'
     state: present
 
-- name: install DOMjudge command-line submit client
+- name: install DOMjudge command-line submit client binary
   copy:
     src: files/domjudge/submit
+    dest: /usr/local/bin/domjudge-submit
+    owner: root
+    group: root
+    mode: '0755'
+
+- name: install submit wrapper (routes -P/--print to external print server when configured)
+  copy:
+    src: files/domjudge/submit-wrapper
     dest: /usr/local/bin/submit
     owner: root
     group: root

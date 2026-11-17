@@ -10,8 +10,9 @@ do
 done
 lpadmin -x ContestPrinter
 
-# clear saved DOMjudge credentials before recreating the user so .netrc is not restored
+# clear saved DOMjudge credentials and print team name before recreating the user so .netrc is not restored
 rm -f /icpc/domjudge_credentials
+rm -f /icpc/PRINT_TEAM
 
 # clear the user
 /icpc/scripts/deleteUser.sh

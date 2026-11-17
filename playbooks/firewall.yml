@@ -15,34 +15,26 @@
       {% for domain in allowed_domains %}
       .{{ domain }}
       {% endfor %}
-      {% if domjudge_enabled | default(false) and (domjudge_url | default('') | length > 0) %}
-      {% set dj_host = (domjudge_url | urlsplit('hostname')) | default('', true) %}
-      {% set dj_covered = namespace(found=false) %}
-      {% for d in allowed_domains %}
-      {% if dj_host == d or dj_host.endswith('.' ~ d) %}
-      {% set dj_covered.found = true %}
-      {% endif %}
-      {% endfor %}
-      {% if dj_host and not dj_covered.found %}
-      {{ dj_host if (dj_host is match('^([0-9]{1,3}\\.){3}[0-9]{1,3}$') or (':' in dj_host)) else '.' ~ dj_host }}
-      {% endif %}
-      {% endif %}
-      {% if judge_system_url | default('') | length > 0 %}
-      {% set js_host = (judge_system_url | urlsplit('hostname')) | default('', true) %}
+      {% if judge_system_url | default('') | trim | length > 0 %}
+      {% set js_host = (judge_system_url | trim | urlsplit('hostname')) | default('', true) %}
       {% set js_covered = namespace(found=false) %}
       {% for d in allowed_domains %}
       {% if js_host == d or js_host.endswith('.' ~ d) %}
       {% set js_covered.found = true %}
       {% endif %}
       {% endfor %}
-      {% if domjudge_enabled | default(false) and (domjudge_url | default('') | length > 0) %}
-      {% set dj_host2 = (domjudge_url | urlsplit('hostname')) | default('', true) %}
-      {% if js_host == dj_host2 %}
-      {% set js_covered.found = true %}
-      {% endif %}
-      {% endif %}
       {% if js_host and not js_covered.found %}
       {{ js_host if (js_host is match('^([0-9]{1,3}\\.){3}[0-9]{1,3}$') or (':' in js_host)) else '.' ~ js_host }}
+      {% endif %}
+      {% endif %}
+      {% set eff_pmode = print_mode | default('auto') %}
+      {% if eff_pmode == 'http' or (eff_pmode == 'auto' and (print_server_url | default('') | trim | length > 0)) %}
+      {% set ps_raw = (print_server_url | default('') | trim) or (print_server_ip | default('') | trim) %}
+      {% if ps_raw %}
+      {% set ps_host = (ps_raw | urlsplit('hostname')) if '://' in ps_raw else (ps_raw.split(':')[0]) %}
+      {% if ps_host and (ps_host not in allowed_domains) %}
+      {{ ps_host if (ps_host is match('^([0-9]{1,3}\\.){3}[0-9]{1,3}$') or (':' in ps_host)) else '.' ~ ps_host }}
+      {% endif %}
       {% endif %}
       {% endif %}
 
@@ -119,6 +111,17 @@
 
 - name: Allow the contestant user(and others) to talk to localhost from localhost). Fixes issue with intellij/eclipse compilation/debugging.
   lineinfile: dest=/etc/ufw/before.rules line="-I ufw-before-output -s 127.0.0.1 -d 127.0.0.1 -j ACCEPT" insertafter="uid-owner contestant -j REJECT" state=present
+  notify: reload ufw
+
+- name: Allow contestant to reach remote CUPS print server when print_mode is cups
+  when:
+    - print_mode | default('auto') == 'cups'
+    - print_server_ip | default('') | trim | length > 0
+  lineinfile:
+    dest: /etc/ufw/before.rules
+    line: "-I ufw-before-output -m owner --uid-owner contestant -d {{ (print_server_ip | trim).split(':')[0] }} -p tcp --dport {{ (print_server_ip | trim).split(':')[1] if ':' in (print_server_ip | trim) else '631' }} -j ACCEPT"
+    insertafter: "uid-owner contestant -j REJECT"
+    state: present
   notify: reload ufw
 
 - name: prevent the 'contestant' user from using IPv6 network(except through localhost)

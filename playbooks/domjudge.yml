@@ -1,0 +1,74 @@
+---
+# Configure DOMjudge workstation state (/icpc/DOMJUDGE_* and optional /icpc/domjudge_credentials)
+# Runs after playbooks/firewall.yml so Squid and /etc/squid/autologin.conf are already in place.
+
+- name: write DOMjudge enabled flag
+  copy:
+    dest: /icpc/DOMJUDGE_ENABLED
+    content: "{{ 'true' if (domjudge_enabled | default(false) | bool) else 'false' }}\n"
+    owner: root
+    group: root
+    mode: '0644'
+
+- name: write judge system URL if configured
+  copy:
+    dest: /icpc/JUDGE_SYSTEM_URL
+    content: "{{ judge_system_url | default('') | trim }}\n"
+    owner: root
+    group: root
+    mode: '0644'
+  when: judge_system_url | default('') | trim | length > 0
+
+- name: remove judge system URL if unset
+  file:
+    path: /icpc/JUDGE_SYSTEM_URL
+    state: absent
+  when: judge_system_url | default('') | trim | length == 0
+
+- name: remove legacy DOMJUDGE_URL file if present
+  file:
+    path: /icpc/DOMJUDGE_URL
+    state: absent
+
+- name: write DOMjudge contest id if configured
+  copy:
+    dest: /icpc/DOMJUDGE_CONTEST
+    content: "{{ domjudge_contest | default('') | trim }}\n"
+    owner: root
+    group: root
+    mode: '0644'
+  when:
+    - domjudge_enabled | default(false) | bool
+    - domjudge_contest | default('') | trim | length > 0
+
+- name: remove DOMjudge contest id if disabled or unset
+  file:
+    path: /icpc/DOMJUDGE_CONTEST
+    state: absent
+  when: not (domjudge_enabled | default(false) | bool) or (domjudge_contest | default('') | trim | length == 0)
+
+- name: write pre-configured DOMjudge team credentials
+  copy:
+    dest: /icpc/domjudge_credentials
+    content: "{{ {'username': (domjudge_username | default('') | trim), 'password': (domjudge_password | default('') | string)} | to_json }}\n"
+    owner: root
+    group: root
+    mode: '0600'
+  no_log: true
+  when:
+    - domjudge_enabled | default(false) | bool
+    - domjudge_username | default('') | trim | length > 0
+    - domjudge_password | default('') | string | length > 0
+
+- name: remove pre-configured DOMjudge credentials if disabled or unset
+  file:
+    path: /icpc/domjudge_credentials
+    state: absent
+  when: >-
+    not (domjudge_enabled | default(false) | bool)
+    or (domjudge_username | default('') | trim | length == 0)
+    or (domjudge_password | default('') | string | length == 0)
+
+- name: synchronize DOMjudge ~/.netrc, /etc/profile.d/domjudge.sh, guide-config.js, and Squid autologin
+  command: /icpc/scripts/domjudge_apply_creds
+  notify: restart squid

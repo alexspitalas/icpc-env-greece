@@ -170,7 +170,7 @@ def read_domjudge_credentials():
 def needs_domjudge_setup() -> bool:
     if not is_domjudge_enabled():
         return False
-    url = read_file("/icpc/DOMJUDGE_URL", "")
+    url = read_file("/icpc/JUDGE_SYSTEM_URL", "")
     parsed = urlparse(url) if url else None
     if not parsed or parsed.scheme not in ("http", "https") or not parsed.hostname:
         return True
@@ -185,11 +185,50 @@ def sync_domjudge_config(reload_squid: bool = False):
     run(cmd, check=False)
 
 
+def sync_printing_config():
+    script = Path("/icpc/scripts/printing_configure")
+    if script.exists():
+        run([str(script)], check=False)
+
+
+def needs_print_team_prompt() -> bool:
+    if is_domjudge_enabled():
+        return False
+    mode = read_file("/icpc/PRINT_MODE", "local").lower()
+    if mode not in ("ipp", "cups", "http"):
+        return False
+    return len(read_file("/icpc/PRINT_TEAM", "")) == 0
+
+
+def configure_print_team(w: Whiptail, force: bool = False):
+    if is_domjudge_enabled():
+        return
+    mode = read_file("/icpc/PRINT_MODE", "local").lower()
+    if mode not in ("ipp", "cups", "http"):
+        return
+    existing = read_file("/icpc/PRINT_TEAM", "")
+    if existing and not force:
+        return
+
+    w.title = "ICPC Setup - Team Print Header"
+    while True:
+        entered, code = w.inputbox(
+            msg="Enter the team name to display on printed pages:",
+            default=existing,
+        )
+        entered = entered.strip()
+        if code == 0 and entered:
+            Path("/icpc/PRINT_TEAM").write_text(entered + "\n", encoding="utf-8")
+            os.chmod("/icpc/PRINT_TEAM", 0o644)
+            break
+        w.msgbox("Team name cannot be empty.")
+
+
 def configure_domjudge(w: Whiptail, force: bool = False):
     if not is_domjudge_enabled():
         return
 
-    url = read_file("/icpc/DOMJUDGE_URL", "")
+    url = read_file("/icpc/JUDGE_SYSTEM_URL", "")
     parsed = urlparse(url) if url else None
     url_valid = bool(parsed and parsed.scheme in ("http", "https") and parsed.hostname)
     existing_user, existing_pass = read_domjudge_credentials()
@@ -248,8 +287,8 @@ def configure_domjudge(w: Whiptail, force: bool = False):
             password = entered_pass
             break
 
-    Path("/icpc/DOMJUDGE_URL").write_text(url + "\n", encoding="utf-8")
-    os.chmod("/icpc/DOMJUDGE_URL", 0o644)
+    Path("/icpc/JUDGE_SYSTEM_URL").write_text(url + "\n", encoding="utf-8")
+    os.chmod("/icpc/JUDGE_SYSTEM_URL", 0o644)
 
     creds_path = Path("/icpc/domjudge_credentials")
     creds_path.write_text(
@@ -258,6 +297,7 @@ def configure_domjudge(w: Whiptail, force: bool = False):
     )
     os.chmod(creds_path, 0o600)
     os.chown(creds_path, 0, 0)
+    Path("/icpc/PRINT_TEAM").unlink(missing_ok=True)
 
     sync_domjudge_config(reload_squid=True)
 
@@ -277,12 +317,13 @@ def main():
     # Apply firewall rules first thing
     apply_firewall_rules()
 
-    # Keep DOMjudge configuration synced if already present
+    # Keep DOMjudge and printing configuration synced if already present
     if not needs_domjudge_setup():
         sync_domjudge_config(reload_squid=True)
+    sync_printing_config()
     
     # Exit if the configuration has already been run and the force argument was not specified
-    if Path("/icpc/setup-complete").exists() and not force and not needs_domjudge_setup():
+    if Path("/icpc/setup-complete").exists() and not force and not needs_domjudge_setup() and not needs_print_team_prompt():
         print("Already configured. Run with -f or --force to reconfigure.")
         sys.exit(0)
 
@@ -360,6 +401,8 @@ def main():
     # Apply the configuration things previously specified
     apply_configuration()
     configure_domjudge(w, force=force)
+    configure_print_team(w, force=force)
+    sync_printing_config()
     
     #Uncomment if we give team information on wallpaper
     #apply_wallpaper()

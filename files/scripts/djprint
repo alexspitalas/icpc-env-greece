@@ -1,0 +1,113 @@
+#!/usr/bin/env python3
+"""Unified contest print command supporting DOMjudge, IPP/CUPS, and HTTP print servers."""
+
+import base64
+import os
+from pathlib import Path
+import socket
+import subprocess
+import sys
+
+
+def read_text(path: Path) -> str:
+    try:
+        return path.read_text(encoding="utf-8").strip()
+    except OSError:
+        return ""
+
+
+def resolve_team_name(icpc_dir: Path) -> str:
+    for candidate in (
+        read_text(icpc_dir / "PRINT_TEAM"),
+        read_text(icpc_dir / "TEAMNAME"),
+        read_text(icpc_dir / "TEAM"),
+    ):
+        if candidate and candidate not in ("demo team", "default team") and not candidate.startswith("000 - demo team"):
+            return candidate
+    return socket.gethostname()
+
+
+def http_print(icpc_dir: Path, files: list[str]) -> int:
+    import requests
+
+    url = read_text(icpc_dir / "PRINT_SERVER_URL")
+    if not url:
+        ip = read_text(icpc_dir / "PRINT_SERVER_IP")
+        if not ip:
+            print("Error: print_mode is 'http' but no PRINT_SERVER_URL or PRINT_SERVER_IP is set.", file=sys.stderr)
+            return 1
+        url = ip if "://" in ip else f"http://{ip}/print"
+
+    team = resolve_team_name(icpc_dir)
+    rc = 0
+    for filepath in files:
+        p = Path(filepath)
+        if not p.is_file():
+            print(f"Error: Cannot find file '{filepath}'.", file=sys.stderr)
+            rc = 1
+            continue
+        raw = p.read_bytes()
+        data = {
+            "team": team,
+            "filename": p.name,
+            "original_name": filepath,
+            "file_contents": base64.b64encode(raw).decode("ascii"),
+        }
+        try:
+            resp = requests.post(
+                url,
+                data=data,
+                files={"file": (p.name, raw)},
+                timeout=15,
+            )
+            if resp.status_code >= 300:
+                print(f"Print server error for '{filepath}' (HTTP {resp.status_code}): {resp.text}", file=sys.stderr)
+                rc = 1
+            else:
+                print(f"Sent '{filepath}' to print server ({team}).")
+        except requests.exceptions.RequestException as exc:
+            print(f"Failed to send '{filepath}' to print server ({url}): {exc}", file=sys.stderr)
+            rc = 1
+    return rc
+
+
+def main():
+    icpc_dir = Path(os.environ.get("ICPC_DIR", "/icpc"))
+    mode = read_text(icpc_dir / "PRINT_MODE").lower() or "domjudge"
+
+    raw_args = sys.argv[1:]
+    if mode == "domjudge":
+        os.execv("/usr/local/bin/domjudge-submit", ["/usr/local/bin/domjudge-submit", "--print", *raw_args])
+
+    # Strip -P / --print / -y / --assume-yes if forwarded from `submit -P`
+    forwarded = []
+    skip_flags = {"-P", "--print", "-y", "--assume-yes"}
+    after_sep = False
+    for arg in raw_args:
+        if arg == "--":
+            after_sep = True
+            forwarded.append(arg)
+        elif not after_sep and arg in skip_flags:
+            continue
+        else:
+            forwarded.append(arg)
+
+    if not forwarded or any(a in ("-h", "--help") for a in forwarded):
+        print(
+            "Usage: djprint <file>...\n"
+            f"Current print mode: {mode}\n"
+            "Prints file(s) with the team name in the page header.",
+        )
+        sys.exit(0 if forwarded else 1)
+
+    if mode == "http":
+        files = [a for a in forwarded if a != "--"]
+        sys.exit(http_print(icpc_dir, files))
+
+    # ipp / cups / local -> print via pcpr (enscript with team header)
+    res = subprocess.run(["/icpc/scripts/pcpr", *forwarded], check=False)
+    sys.exit(res.returncode)
+
+
+if __name__ == "__main__":
+    main()

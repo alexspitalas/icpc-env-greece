@@ -1,0 +1,248 @@
+#!/usr/bin/env python3
+"""Synchronize DOMjudge workstation settings from /icpc configuration files.
+
+Reads /icpc/DOMJUDGE_ENABLED, /icpc/JUDGE_SYSTEM_URL, /icpc/DOMJUDGE_CONTEST, and
+/icpc/domjudge_credentials, then updates:
+  - /etc/profile.d/domjudge.sh (SUBMITBASEURL, SUBMITCONTEST)
+  - /home/contestant/.netrc (for the DOMjudge `submit` CLI)
+  - /etc/squid/autologin.conf (X-DOMjudge-Login / X-DOMjudge-Pass headers)
+  - /etc/squid/acl_allowed_domains.txt (ensures DOMjudge host is whitelisted)
+"""
+
+import argparse
+import base64
+import grp
+import ipaddress
+import json
+import os
+from pathlib import Path
+import pwd
+import shlex
+import subprocess
+from urllib.parse import urlparse
+
+
+def resolve_domjudge_team_name(domjudge_url: str, username: str, password: str) -> str:
+    """Best-effort lookup of team display name via DOMjudge /api/user; falls back to username."""
+    try:
+        import requests
+
+        api_url = domjudge_url.rstrip("/") + "/api/user"
+        resp = requests.get(api_url, auth=(username, password), timeout=2)
+        if resp.status_code == 200:
+            info = resp.json()
+            if isinstance(info, dict):
+                for key in ("team", "name", "username"):
+                    val = str(info.get(key) or "").strip()
+                    if val:
+                        return val
+    except Exception:
+        pass
+    return username
+
+
+def read_text_stripped(path: Path) -> str:
+    try:
+        return path.read_text(encoding="utf-8").strip()
+    except OSError:
+        return ""
+
+
+def read_credentials(path: Path):
+    if not path.exists():
+        return None, None
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        username = str(data.get("username", "")).strip()
+        password = str(data.get("password", ""))
+        if username and password:
+            return username, password
+    except Exception:
+        pass
+    return None, None
+
+
+def format_netrc_token(val: str) -> str:
+    if any(c.isspace() or c in '#"\\' for c in val) or val == "":
+        escaped = val.replace("\\", "\\\\").replace('"', '\\"')
+        return f'"{escaped}"'
+    return val
+
+
+def escape_ere(value: str) -> str:
+    special = set(r"\.+*?^$()[]{}|")
+    return "".join(f"\\{ch}" if ch in special else ch for ch in value)
+
+
+def escape_squid_quoted(value: str) -> str:
+    return value.replace("\\", "\\\\").replace('"', '\\"')
+
+
+def is_ip_literal(host: str) -> bool:
+    try:
+        ipaddress.ip_address(host)
+        return True
+    except ValueError:
+        return False
+
+
+def write_if_changed(path: Path, content: str, mode: int, uid: int = -1, gid: int = -1) -> bool:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    changed = True
+    if path.exists():
+        try:
+            if path.read_text(encoding="utf-8") == content:
+                changed = False
+        except OSError:
+            pass
+    if changed:
+        path.write_text(content, encoding="utf-8")
+    os.chmod(path, mode)
+    if os.geteuid() == 0 and (uid != -1 or gid != -1):
+        os.chown(path, uid, gid)
+    return changed
+
+
+def remove_if_exists(path: Path) -> bool:
+    if path.exists():
+        path.unlink()
+        return True
+    return False
+
+
+def ensure_allowed_domain(acl_path: Path, hostname: str) -> bool:
+    if not acl_path.exists() or not hostname:
+        return False
+    lines = acl_path.read_text(encoding="utf-8").splitlines()
+    for raw in lines:
+        entry = raw.split("#", 1)[0].strip().lower()
+        if not entry:
+            continue
+        host_l = hostname.lower()
+        if entry == host_l:
+            return False
+        if entry.startswith(".") and (host_l == entry[1:] or host_l.endswith(entry)):
+            return False
+
+    new_entry = hostname if is_ip_literal(hostname) else f".{hostname}"
+    updated = "\n".join(lines + [new_entry]) + "\n"
+    acl_path.write_text(updated, encoding="utf-8")
+    os.chmod(acl_path, 0o644)
+    return True
+
+
+def lookup_uid_gid(user: str, group: str):
+    uid = -1
+    gid = -1
+    try:
+        uid = pwd.getpwnam(user).pw_uid
+    except KeyError:
+        pass
+    try:
+        gid = grp.getgrnam(group).gr_gid
+    except KeyError:
+        pass
+    return uid, gid
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Apply DOMjudge credentials and environment settings.")
+    parser.add_argument("--reload-squid", action="store_true", help="Restart squid if running and its config changed.")
+    args = parser.parse_args()
+
+    icpc_dir = Path(os.environ.get("ICPC_DIR", "/icpc"))
+    contestant_home = Path(os.environ.get("CONTESTANT_HOME", "/home/contestant"))
+    squid_dir = Path(os.environ.get("SQUID_DIR", "/etc/squid"))
+    profile_d_dir = Path(os.environ.get("PROFILE_D_DIR", "/etc/profile.d"))
+    guide_dir = Path(os.environ.get("GUIDE_DIR", "/htmlfile/documentHtml"))
+
+    enabled = read_text_stripped(icpc_dir / "DOMJUDGE_ENABLED").lower() == "true"
+    domjudge_contest = read_text_stripped(icpc_dir / "DOMJUDGE_CONTEST")
+    judge_system_url = read_text_stripped(icpc_dir / "JUDGE_SYSTEM_URL")
+    domjudge_url = judge_system_url
+
+    if guide_dir.exists():
+        guide_cfg = {
+            "judgeUrl": judge_system_url,
+            "judgeLabel": "Judge System",
+            "domjudgeEnabled": enabled,
+        }
+        write_if_changed(
+            guide_dir / "guide-config.js",
+            f"window.ICPC_GUIDE_CONFIG = {json.dumps(guide_cfg)};\n",
+            0o644,
+            0,
+            0,
+        )
+
+    profile_path = profile_d_dir / "domjudge.sh"
+    netrc_path = contestant_home / ".netrc"
+    autologin_path = squid_dir / "autologin.conf"
+    acl_path = squid_dir / "acl_allowed_domains.txt"
+
+    _, proxy_gid = lookup_uid_gid("root", "proxy")
+    if proxy_gid == -1:
+        proxy_gid = 0
+    contestant_uid, contestant_gid = lookup_uid_gid("contestant", "contestant")
+
+    squid_changed = False
+
+    if not enabled:
+        remove_if_exists(profile_path)
+        remove_if_exists(netrc_path)
+        if autologin_path.parent.exists():
+            squid_changed = write_if_changed(autologin_path, "# Placeholder\n", 0o640, 0, proxy_gid) or squid_changed
+    else:
+        profile_lines = ["# Auto-generated by domjudge_apply_creds"]
+        if domjudge_url:
+            submit_url = domjudge_url.rstrip("/") + "/"
+            profile_lines.append(f"export SUBMITBASEURL={shlex.quote(submit_url)}")
+        if domjudge_contest:
+            profile_lines.append(f"export SUBMITCONTEST={shlex.quote(domjudge_contest)}")
+        write_if_changed(profile_path, "\n".join(profile_lines) + "\n", 0o644, 0, 0)
+
+        username, password = read_credentials(icpc_dir / "domjudge_credentials")
+        parsed_url = urlparse(domjudge_url) if domjudge_url else None
+        hostname = parsed_url.hostname if parsed_url else None
+
+        if username and password and hostname:
+            if contestant_home.exists():
+                netrc_line = (
+                    f"machine {format_netrc_token(hostname)} "
+                    f"login {format_netrc_token(username)} "
+                    f"password {format_netrc_token(password)}\n"
+                )
+                write_if_changed(netrc_path, netrc_line, 0o600, contestant_uid, contestant_gid)
+
+            if acl_path.exists():
+                squid_changed = ensure_allowed_domain(acl_path, hostname) or squid_changed
+
+            print_team_path = icpc_dir / "PRINT_TEAM"
+            if not read_text_stripped(print_team_path):
+                team_display = resolve_domjudge_team_name(domjudge_url, username, password)
+                write_if_changed(print_team_path, team_display + "\n", 0o644, 0, 0)
+
+            if autologin_path.parent.exists():
+                base_no_slash = domjudge_url.rstrip("/")
+                login_regex = f"^{escape_ere(base_no_slash)}/login($|\\?)"
+                b64_pass = base64.b64encode(password.encode("utf-8")).decode("ascii")
+                autologin_content = (
+                    "# Auto-generated by domjudge_apply_creds\n"
+                    f"acl autologin url_regex {login_regex}\n"
+                    f'request_header_add X-DOMjudge-Login "{escape_squid_quoted(username)}" autologin\n'
+                    f'request_header_add X-DOMjudge-Pass "{b64_pass}" autologin\n'
+                )
+                squid_changed = write_if_changed(autologin_path, autologin_content, 0o640, 0, proxy_gid) or squid_changed
+        else:
+            remove_if_exists(netrc_path)
+            if autologin_path.parent.exists():
+                squid_changed = write_if_changed(autologin_path, "# Placeholder\n", 0o640, 0, proxy_gid) or squid_changed
+
+    if args.reload_squid and squid_changed:
+        res = subprocess.run(["systemctl", "is-active", "--quiet", "squid"], check=False)
+        if res.returncode == 0:
+            subprocess.run(["systemctl", "restart", "squid"], check=False)
+
+
+if __name__ == "__main__":
+    main()

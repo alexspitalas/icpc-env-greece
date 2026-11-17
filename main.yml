@@ -122,6 +122,7 @@
 
     - import_tasks: 'playbooks/firewall.yml'
     - import_tasks: 'playbooks/domjudge.yml'
+    - import_tasks: 'playbooks/printing.yml'
 
     # Management related things
     #- import_tasks: 'playbooks/ansible-pull.yml'
