@@ -1,0 +1,173 @@
+# Install Sublime Text Build 4200 debian package (from local files/ if present, otherwise from official download URL)
+- name: Check if local Sublime Text debian package exists
+  stat:
+    path: files/sublime-text_build-4200_amd64.deb
+  delegate_to: 127.0.0.1
+  become: false
+  register: sublime_local_deb
+
+- name: Copy Sublime Text debian package from local files/
+  when: sublime_local_deb.stat.exists
+  copy:
+    src: files/sublime-text_build-4200_amd64.deb
+    dest: /tmp/sublime-text_build-4200_amd64.deb
+
+- name: Download Sublime Text Build 4200 debian package if not in local files/
+  when: not sublime_local_deb.stat.exists
+  get_url:
+    url: https://download.sublimetext.com/sublime-text_build-4200_amd64.deb
+    dest: /tmp/sublime-text_build-4200_amd64.deb
+
+- name: Install Sublime Text debian package
+  apt:
+    deb: /tmp/sublime-text_build-4200_amd64.deb
+
+- name: Clean up Sublime Text debian installer
+  file:
+    path: /tmp/sublime-text_build-4200_amd64.deb
+    state: absent
+
+- name: Create Sublime Text package directories in /etc/skel
+  file:
+    path: "/etc/skel/.config/sublime-text/Packages/{{ item }}"
+    state: directory
+    mode: '0755'
+  loop:
+    - User
+    - C++
+    - Python
+    - Java
+
+- name: Disable Sublime Text update check in Preferences
+  copy:
+    dest: /etc/skel/.config/sublime-text/Packages/User/Preferences.sublime-settings
+    mode: '0644'
+    content: |
+      {
+        "update_check": false
+      }
+
+- name: Configure Sublime Text C++ build system with Run in Terminal variant
+  copy:
+    dest: /etc/skel/.config/sublime-text/Packages/C++/C++ Single File.sublime-build
+    mode: '0644'
+    content: |
+      {
+        "shell_cmd": "g++ -Wall -O2 \"${file}\" -o \"${file_path}/${file_base_name}\"",
+        "file_regex": "^(..[^:]*):([0-9]+):?([0-9]+)?:? (.*)$",
+        "working_dir": "${file_path}",
+        "selector": "source.c++",
+        "variants": [
+          {
+            "name": "Run in Terminal",
+            "shell_cmd": "xfce4-terminal -T \"${file_name}\" -x bash -c 'g++ -Wall -O2 \"$1\" -o \"$2\" && \"$2\"; echo \"\"; echo \"--------------------------------\"; echo \"(process exited with code $?)\"; read -rp \"Press Enter to close...\"' _ \"${file}\" \"${file_path}/${file_base_name}\""
+          },
+          {
+            "name": "Run",
+            "shell_cmd": "g++ -Wall -O2 \"${file}\" -o \"${file_path}/${file_base_name}\" && \"${file_path}/${file_base_name}\""
+          }
+        ]
+      }
+
+- name: Configure Sublime Text C build system with Run in Terminal variant
+  copy:
+    dest: /etc/skel/.config/sublime-text/Packages/C++/C Single File.sublime-build
+    mode: '0644'
+    content: |
+      {
+        "shell_cmd": "gcc -Wall -O2 \"${file}\" -o \"${file_path}/${file_base_name}\" -lm",
+        "file_regex": "^(..[^:]*):([0-9]+):?([0-9]+)?:? (.*)$",
+        "working_dir": "${file_path}",
+        "selector": "source.c",
+        "variants": [
+          {
+            "name": "Run in Terminal",
+            "shell_cmd": "xfce4-terminal -T \"${file_name}\" -x bash -c 'gcc -Wall -O2 \"$1\" -o \"$2\" -lm && \"$2\"; echo \"\"; echo \"--------------------------------\"; echo \"(process exited with code $?)\"; read -rp \"Press Enter to close...\"' _ \"${file}\" \"${file_path}/${file_base_name}\""
+          },
+          {
+            "name": "Run",
+            "shell_cmd": "gcc -Wall -O2 \"${file}\" -o \"${file_path}/${file_base_name}\" -lm && \"${file_path}/${file_base_name}\""
+          }
+        ]
+      }
+
+- name: Configure Sublime Text Python build system with Run in Terminal variant
+  copy:
+    dest: /etc/skel/.config/sublime-text/Packages/Python/Python.sublime-build
+    mode: '0644'
+    content: |
+      {
+        "cmd": ["python3", "-u", "$file"],
+        "file_regex": "^[ ]*File \"(...*?)\", line ([0-9]*)",
+        "working_dir": "${file_path}",
+        "selector": "source.python",
+        "env": {"PYTHONIOENCODING": "utf-8"},
+        "variants": [
+          {
+            "name": "Run in Terminal",
+            "shell_cmd": "xfce4-terminal -T \"${file_name}\" -x bash -c 'python3 -u \"$1\"; echo \"\"; echo \"--------------------------------\"; echo \"(process exited with code $?)\"; read -rp \"Press Enter to close...\"' _ \"${file}\""
+          },
+          {
+            "name": "Syntax Check",
+            "cmd": ["python3", "-m", "py_compile", "$file"]
+          }
+        ]
+      }
+
+- name: Configure Sublime Text Java build system with Run and Run in Terminal variants
+  copy:
+    dest: /etc/skel/.config/sublime-text/Packages/Java/JavaC.sublime-build
+    mode: '0644'
+    content: |
+      {
+        "shell_cmd": "javac \"$file\"",
+        "file_regex": "^(...*?):([0-9]*):?([0-9]*)",
+        "working_dir": "${file_path}",
+        "selector": "source.java",
+        "variants": [
+          {
+            "name": "Run in Terminal",
+            "shell_cmd": "xfce4-terminal -T \"${file_name}\" -x bash -c 'javac \"$1\" && java -cp \"$2\" \"$3\"; echo \"\"; echo \"--------------------------------\"; echo \"(process exited with code $?)\"; read -rp \"Press Enter to close...\"' _ \"${file}\" \"${file_path}\" \"${file_base_name}\""
+          },
+          {
+            "name": "Run",
+            "shell_cmd": "javac \"${file}\" && java -cp \"${file_path}\" \"${file_base_name}\""
+          }
+        ]
+      }
+
+- name: Configure Sublime Text Kotlin build system with Run and Run in Terminal variants
+  copy:
+    dest: /etc/skel/.config/sublime-text/Packages/User/Kotlin.sublime-build
+    mode: '0644'
+    content: |
+      {
+        "shell_cmd": "kotlinc \"${file}\" -include-runtime -d \"${file_path}/${file_base_name}.jar\"",
+        "file_regex": "^(..[^:]*):([0-9]+):([0-9]+): (.*)$",
+        "working_dir": "${file_path}",
+        "selector": "source.Kotlin, source.kotlin",
+        "file_patterns": ["*.kt", "*.kts"],
+        "variants": [
+          {
+            "name": "Run in Terminal",
+            "shell_cmd": "xfce4-terminal -T \"${file_name}\" -x bash -c 'kotlinc \"$1\" -include-runtime -d \"$2\" && java -jar \"$2\"; echo \"\"; echo \"--------------------------------\"; echo \"(process exited with code $?)\"; read -rp \"Press Enter to close...\"' _ \"${file}\" \"${file_path}/${file_base_name}.jar\""
+          },
+          {
+            "name": "Run",
+            "shell_cmd": "kotlinc \"${file}\" -include-runtime -d \"${file_path}/${file_base_name}.jar\" && java -jar \"${file_path}/${file_base_name}.jar\""
+          }
+        ]
+      }
+
+- name: Check if contestant home directory already exists
+  stat:
+    path: /home/contestant
+  register: contestant_home
+
+- name: Sync Sublime Text config to existing contestant home directory
+  when: contestant_home.stat.exists
+  copy:
+    src: /etc/skel/.config/sublime-text
+    dest: /home/contestant/.config/
+    remote_src: true
+    mode: preserve
