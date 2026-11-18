@@ -1,9 +1,43 @@
 #!/bin/bash
+set -euo pipefail
 
-# make site/team information available
-# info on how to use role: https://www.robustperception.io/how-to-have-labels-for-machine-roles
-echo "icpc_workstation_info{site=\"$(cat /icpc/SITE)\", team=\"$(cat /icpc/TEAMID)\", affiliation=\"$(cat /icpc/TEAMAFFILIATION)\", name=\"$(cat /icpc/TEAMNAME)\"} 1" | sponge /var/lib/prometheus/node-exporter/icpc_workstation_info.prom
+METRICS_DIR="/var/lib/prometheus/node-exporter"
+mkdir -p "$METRICS_DIR"
 
-# information about when the image was built/last updated
-echo icpc_build_ts $(stat --printf=%Y /icpc/version) | sponge /var/lib/prometheus/node-exporter/icpc_build_ts.prom
-echo icpc_update_ts $(stat --printf=%Y /icpc/update-version) | sponge /var/lib/prometheus/node-exporter/icpc_update_ts.prom
+read_trimmed() {
+  local path="$1"
+  if [ -r "$path" ]; then
+    tr -d '\r' < "$path" | tr '\n' ' ' | sed -e 's/[[:space:]]*$//' -e 's/\\/\\\\/g' -e 's/"/\\"/g'
+  fi
+}
+
+write_atomic() {
+  local target="$1"
+  local tmp
+  tmp=$(mktemp "${target}.XXXXXX")
+  cat > "$tmp"
+  chmod 0644 "$tmp"
+  mv -f "$tmp" "$target"
+}
+
+SITE=$(read_trimmed /icpc/SITE)
+TEAMID=$(read_trimmed /icpc/TEAMID)
+AFFILIATION=$(read_trimmed /icpc/TEAMAFFILIATION)
+TEAMNAME=$(read_trimmed /icpc/TEAMNAME)
+if [ -z "$TEAMNAME" ]; then
+  TEAMNAME=$(read_trimmed /icpc/PRINT_TEAM)
+fi
+
+# Make site/team information available
+# Info on how to use role: https://www.robustperception.io/how-to-have-labels-for-machine-roles
+printf 'icpc_workstation_info{site="%s", team="%s", affiliation="%s", name="%s"} 1\n' \
+  "$SITE" "$TEAMID" "$AFFILIATION" "$TEAMNAME" | write_atomic "${METRICS_DIR}/icpc_workstation_info.prom"
+
+# Information about when the image was built/last updated
+if [ -e /icpc/version ]; then
+  printf 'icpc_build_ts %s\n' "$(stat --printf=%Y /icpc/version)" | write_atomic "${METRICS_DIR}/icpc_build_ts.prom"
+fi
+
+if [ -e /icpc/update-version ]; then
+  printf 'icpc_update_ts %s\n' "$(stat --printf=%Y /icpc/update-version)" | write_atomic "${METRICS_DIR}/icpc_update_ts.prom"
+fi

@@ -16,6 +16,21 @@ icpcadmin_pass: icpcadmin
 icpcadmin_ssh_keys: []
   # - "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAA..."
 
+# ===== Target Storage / Boot Medium =====
+# Select where the built image will be installed and booted from:
+#   "usb" : Booted from an external USB flash drive (default). Keeps USB stability
+#           workarounds enabled (blacklists UAS, disables USB autosuspend/LPM,
+#           caps dirty page writeback in 99-usb-flush.conf, preloads FS cache on
+#           boot via warm-fs-cache/vmtouch, disables fstrim.timer, and keeps
+#           journald logs volatile).
+#   "ssd" : Installed directly on the PCs' internal SATA/NVMe SSD. Removes USB-flash
+#           throttling/workarounds (allows UAS, removes dirty-buffer writeback caps,
+#           drops usbcore LPM/autosuspend kernel params, disables warm-fs-cache boot
+#           preloading, enables weekly fstrim.timer, and persists journald logs with
+#           a 100M cap). Note: pass `--no-usb` to ./create_baseimg.sh as well if you
+#           do not need the 192MB FAT32 ICPC transfer partition.
+install_target: "usb"
+
 #The auth token that is used to allow traffic to the server
 auth_token: "1234"
 # Domains (and their subdomains) that squid sends "Authorization: Bearer <auth_token>" to
@@ -72,6 +87,26 @@ print_server_uri: ""
 print_server_cups_queue: ""
 # - "http" mode endpoint URL (defaults to "http://<print_server_ip>/print" if empty)
 print_server_url: ""
+
+# ===== Monitoring (Prometheus node_exporter) =====
+# Set to true to install and enable Prometheus node_exporter on contestant images
+# (https://github.com/prometheus/node_exporter) so Prometheus/Grafana can scrape metrics.
+node_exporter_enabled: false
+
+# Upstream release version from https://github.com/prometheus/node_exporter/releases
+node_exporter_version: "1.12.1"
+
+# TCP port for node_exporter to listen on (opened inbound in UFW when enabled).
+node_exporter_port: 9100
+
+# Optional list of Prometheus server IPs or CIDRs allowed to scrape node_exporter.
+# When empty ([]), inbound TCP to node_exporter_port is allowed from any source.
+# Example: ["192.168.1.10", "10.0.0.0/24"]
+node_exporter_allowed_ips: []
+
+# Optional extra CLI flags passed to node_exporter (e.g. "--collector.systemd")
+node_exporter_extra_args: ""
+
 allowed_domains:
   - cppreference.com
   - docs.python.org

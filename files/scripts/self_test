@@ -71,6 +71,12 @@ NOSITE="${RED}Not Set${RESET}"
 SITENAME="${SITENAME:-$NOSITE}"
 echo $SITENAME
 
+INSTALL_TARGET_VAL="$(cat /icpc/INSTALL_TARGET 2>/dev/null)"
+if [ -n "$INSTALL_TARGET_VAL" ]; then
+  print_check "Install Target"
+  echo "$INSTALL_TARGET_VAL"
+fi
+
 # check DOMjudge configuration if enabled or autologin urls are defined
 DOMJUDGE_ENABLED=$(cat /icpc/DOMJUDGE_ENABLED 2>/dev/null)
 if [ "$DOMJUDGE_ENABLED" = "true" ] || grep -q 'acl autologin url_regex' /etc/squid/squid.conf ; then
@@ -134,6 +140,11 @@ check_return $?
 
 print_check "Making sure the squid proxy is running"
 check_service 'squid'
+
+if [ -f /etc/systemd/system/node_exporter.service ]; then
+  print_check "Making sure node_exporter is running"
+  check_service 'node_exporter'
+fi
 
 print_check "Testing access to google is blocked with a proxy error"
 curl -s --proxy http://127.0.0.1:3128 http://google.com 2>/dev/null | grep "<h1>Access Denied</h1>" > /dev/null

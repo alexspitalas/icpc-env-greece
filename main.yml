@@ -115,6 +115,15 @@
     # would bypass the squid allow-list entirely. Re-enable only if it is chained
     # behind squid.
     #- import_tasks: 'playbooks/proxy.yaml'
+    - name: resolve and validate install_target
+      set_fact:
+        effective_install_target: "{{ install_target | default('usb') | lower | trim }}"
+    - name: ensure install_target is valid
+      assert:
+        that:
+          - effective_install_target in ['usb', 'ssd']
+        fail_msg: "Invalid install_target '{{ install_target | default('') }}'. Expected 'usb' or 'ssd'."
+
     - import_tasks: 'playbooks/icpc.yml'
     - import_tasks: 'playbooks/vmtouch.yml'
     - import_tasks: 'playbooks/system.yml'
@@ -123,6 +132,7 @@
     - import_tasks: 'playbooks/firewall.yml'
     - import_tasks: 'playbooks/domjudge.yml'
     - import_tasks: 'playbooks/printing.yml'
+    - import_tasks: 'playbooks/monitoring.yml'
 
     # Management related things
     #- import_tasks: 'playbooks/ansible-pull.yml'
@@ -192,6 +202,17 @@
 
     - name: reload ufw
       command: ufw reload
+
+    - name: restart node_exporter
+      systemd:
+        name: node_exporter
+        state: restarted
+        daemon_reload: yes
+
+    - name: restart systemd-journald
+      systemd:
+        name: systemd-journald
+        state: restarted
 
     
 

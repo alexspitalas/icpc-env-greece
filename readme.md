@@ -80,6 +80,10 @@ cd icpc-env-greece
     ```bash
     curl -L -O https://github.com/JetBrains/kotlin/releases/download/v2.2.0/kotlin-compiler-2.2.0.zip
     ```
+  * *(Optional, required if `node_exporter_enabled: true`)* Download Prometheus `node_exporter` into the `files/` directory:
+    ```bash
+    curl -L -O https://github.com/prometheus/node_exporter/releases/download/v1.12.1/node_exporter-1.12.1.linux-amd64.tar.gz
+    ```
 
 1. Run secrets/gen-secrets.sh to create some ssh keys/other secret data. Follow this with ./fetch-secrets.sh to put them in the right place for ansible. Pass the ID of the contest as an argument on both scripts.
 ```bash
@@ -118,6 +122,38 @@ powers it off. Take a walk, this step takes some time(10-30minutes).
 # WARNING: Make sure to replace /dev/sdx with your actual device
 sudo dd if=output/all-2025-09-01_image-amd64.img of=/dev/sdx bs=1M status=progress oflag=direct conv=sparse
 ```
+## Installing Directly on Internal SSDs
+If you are installing the contestant environment directly onto the PCs' internal SATA/NVMe SSDs rather than booting from external USB flash drives:
+
+### 1. Configure `group_vars/all` (from `group_vars/all.dist`)
+Set `install_target` to `"ssd"` in `group_vars/all` before running `./build-final.sh`:
+```yaml
+install_target: "ssd"
+```
+* `"usb"` *(default)* keeps USB flash drive stability workarounds enabled (`blacklist uas`, `usbcore.autosuspend=-1`, `usbcore.lpm_disable=1`, `99-usb-flush.conf` dirty-page caps, `warm-fs-cache.service` boot preloading via `vmtouch`, `fstrim.timer` disabled, and volatile `journald` logs).
+* `"ssd"` removes the USB throttling/workarounds and `warm-fs-cache.service`, enables weekly `fstrim.timer`, and persists `journald` logs (capped at 100M).
+* *(Optional)* When building a base image exclusively for internal SSDs, pass `--no-usb` to `./create_baseimg.sh` to omit the 192MB FAT32 `ICPC` partition.
+
+### 2. Deploy via USB + Clonezilla
+1. Write the built image to a staging USB drive with `dd` (replace `/dev/sdx` with the USB device):
+   ```bash
+   sudo dd if=output/all-2025-09-01_image-amd64.img of=/dev/sdx bs=1M status=progress oflag=direct conv=sparse
+   ```
+2. **Do not boot from this staging USB drive.** Booting it directly triggers `firstboot.service`, generates an `/etc/machine-id`, and marks `/icpc/setup-complete` on the source USB before cloning.
+3. Boot the target PC into **Clonezilla** and clone **disk-to-local-disk** (`device-device` / `disk_to_local_disk`) from the staging USB drive to the internal SSD (`/dev/sda` or `/dev/nvme0n1`).
+   * The image uses `UUID=` in `/etc/fstab`, so it works on both SATA and NVMe drives.
+   * By default the root partition stays ~28.5GB; if you want to use the full SSD capacity, enable Clonezilla's proportional partition resize options (`-k1` / `-r` in Expert mode).
+4. **Unplug the staging USB drive before rebooting** the PC. Both drives share identical partition/filesystem `UUID`s right after cloning, so leaving both attached can cause GRUB or Linux to mount the wrong disk.
+5. *(If needed)* If the PC previously had another OS installed and fails to boot automatically, clear stale EFI boot entries or select the SSD in the UEFI/BIOS boot order.
+
+### 3. First Boot
+1. On first boot from the cloned SSD, `systemd` generates a unique `/etc/machine-id` for that workstation.
+2. `firstboot.service` switches to `tty2` and launches `/icpc/scripts/icpc_setup` before the desktop starts:
+   * Prompts for any unconfigured runtime settings (such as DOMjudge URL/team credentials when `domjudge_enabled: true` and credentials aren't pre-filled, or the print team name when needed).
+   * Runs `/icpc/scripts/self_test` (showing `Install Target: ssd` along with system, network, proxy, and compiler checks) and waits for `[Enter]`.
+   * Writes `/icpc/setup-complete` and starts LightDM into the `contestant` desktop session.
+3. To re-run first-boot setup on a machine later, run `sudo /icpc/scripts/icpc_setup -f` or perform a `Full Reset` (`full-reset`).
+
 ## Customization of the Image
 One of our goals with this image is for it to be easily customized. To achieve this
 the image is configured using Ansible. Ansible is kicked off with the `main.yml`
@@ -162,6 +198,31 @@ In the final image, SSH password authentication is disabled and `imageadmin` is 
   ```
   This connects as `icpcadmin` on the active port (5222 or 2222).
 * You can add custom public keys to `group_vars/all` under `icpcadmin_ssh_keys` prior to building.
+
+### Monitoring (Prometheus node_exporter & Grafana)
+Contestant images can optionally run [Prometheus `node_exporter`](https://github.com/prometheus/node_exporter) (`playbooks/monitoring.yml`) for host monitoring in Prometheus and Grafana.
+
+1. Enable and configure it in `group_vars/all` (see `group_vars/all.dist` for defaults):
+   ```yaml
+   node_exporter_enabled: true
+   node_exporter_version: "1.12.1"
+   node_exporter_port: 9100
+   # Optional: restrict inbound scrapes to your Prometheus server IP/CIDR
+   node_exporter_allowed_ips:
+     - "192.168.1.10"
+   ```
+   Download `node_exporter-<version>.linux-amd64.tar.gz` into `files/` beforehand (the build expects the local archive in `files/` and fails if it is missing).
+2. When enabled, the build installs `/usr/local/bin/node_exporter`, enables `node_exporter.service` (at low CPU/IO priority), opens port `9100/tcp` in UFW, and configures `icpc-static-node-exporter` (`/usr/local/bin/icpc-metrics`) to expose `icpc_workstation_info`, `icpc_build_ts`, and `icpc_update_ts` under `/var/lib/prometheus/node-exporter`.
+3. On your Prometheus server, add a scrape job targeting the contestant machines (port `9100`):
+   ```yaml
+   scrape_configs:
+     - job_name: 'contestants'
+       static_configs:
+         - targets:
+             - '<contestant-ip-1>:9100'
+             - '<contestant-ip-2>:9100'
+   ```
+   Then add Prometheus as a data source in Grafana and import a Node Exporter dashboard (such as Grafana dashboard ID `1860`).
 
 
 ## Reset Contestant
