@@ -1,13 +1,18 @@
 #!/bin/bash
 set -euo pipefail
 
-METRICS_DIR="/var/lib/prometheus/node-exporter"
+ICPC_DIR="${ICPC_DIR:-/icpc}"
+METRICS_DIR="${METRICS_DIR:-/var/lib/prometheus/node-exporter}"
 mkdir -p "$METRICS_DIR"
+
+escape_prom_label() {
+  tr -d '\r' | tr '\n' ' ' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' -e 's/\\/\\\\/g' -e 's/"/\\"/g'
+}
 
 read_trimmed() {
   local path="$1"
   if [ -r "$path" ]; then
-    tr -d '\r' < "$path" | tr '\n' ' ' | sed -e 's/[[:space:]]*$//' -e 's/\\/\\\\/g' -e 's/"/\\"/g'
+    escape_prom_label < "$path"
   fi
 }
 
@@ -20,12 +25,33 @@ write_atomic() {
   mv -f "$tmp" "$target"
 }
 
-SITE=$(read_trimmed /icpc/SITE)
-TEAMID=$(read_trimmed /icpc/TEAMID)
-AFFILIATION=$(read_trimmed /icpc/TEAMAFFILIATION)
-TEAMNAME=$(read_trimmed /icpc/TEAMNAME)
-if [ -z "$TEAMNAME" ]; then
-  TEAMNAME=$(read_trimmed /icpc/PRINT_TEAM)
+SITE=$(read_trimmed "${ICPC_DIR}/SITE")
+TEAMID=$(read_trimmed "${ICPC_DIR}/TEAMID")
+AFFILIATION=$(read_trimmed "${ICPC_DIR}/TEAMAFFILIATION")
+TEAMNAME=$(read_trimmed "${ICPC_DIR}/TEAMNAME")
+PRINT_TEAM=$(read_trimmed "${ICPC_DIR}/PRINT_TEAM")
+
+if [ -z "$TEAMNAME" ] || [ "$TEAMNAME" = "demo team" ] || [ "$TEAMNAME" = "default team" ]; then
+  if [ -n "$PRINT_TEAM" ]; then
+    TEAMNAME="$PRINT_TEAM"
+  fi
+fi
+
+if [ -z "$TEAMID" ] || [ "$TEAMID" = "000" ]; then
+  if [ -r "${ICPC_DIR}/domjudge_credentials" ] && command -v python3 >/dev/null 2>&1; then
+    DJ_USER=$(python3 -c 'import json, sys
+try:
+    d = json.load(open(sys.argv[1], encoding="utf-8"))
+    print(str(d.get("username") or "").strip())
+except Exception:
+    pass' "${ICPC_DIR}/domjudge_credentials" | escape_prom_label)
+    if [ -n "$DJ_USER" ]; then
+      TEAMID="$DJ_USER"
+    fi
+  fi
+  if { [ -z "$TEAMID" ] || [ "$TEAMID" = "000" ]; } && [ -n "$PRINT_TEAM" ]; then
+    TEAMID="$PRINT_TEAM"
+  fi
 fi
 
 # Make site/team information available
@@ -34,10 +60,10 @@ printf 'icpc_workstation_info{site="%s", team="%s", affiliation="%s", name="%s"}
   "$SITE" "$TEAMID" "$AFFILIATION" "$TEAMNAME" | write_atomic "${METRICS_DIR}/icpc_workstation_info.prom"
 
 # Information about when the image was built/last updated
-if [ -e /icpc/version ]; then
-  printf 'icpc_build_ts %s\n' "$(stat --printf=%Y /icpc/version)" | write_atomic "${METRICS_DIR}/icpc_build_ts.prom"
+if [ -e "${ICPC_DIR}/version" ]; then
+  printf 'icpc_build_ts %s\n' "$(stat --printf=%Y "${ICPC_DIR}/version")" | write_atomic "${METRICS_DIR}/icpc_build_ts.prom"
 fi
 
-if [ -e /icpc/update-version ]; then
-  printf 'icpc_update_ts %s\n' "$(stat --printf=%Y /icpc/update-version)" | write_atomic "${METRICS_DIR}/icpc_update_ts.prom"
+if [ -e "${ICPC_DIR}/update-version" ]; then
+  printf 'icpc_update_ts %s\n' "$(stat --printf=%Y "${ICPC_DIR}/update-version")" | write_atomic "${METRICS_DIR}/icpc_update_ts.prom"
 fi

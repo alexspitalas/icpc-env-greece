@@ -60,7 +60,7 @@
         "variants": [
           {
             "name": "Run in Terminal",
-            "shell_cmd": "xfce4-terminal -T \"${file_name}\" -x bash -c 'g++ -Wall -O2 \"$1\" -o \"$2\" && \"$2\"; echo \"\"; echo \"--------------------------------\"; echo \"(process exited with code $?)\"; read -rp \"Press Enter to close...\"' _ \"${file}\" \"${file_path}/${file_base_name}\""
+            "shell_cmd": "xfce4-terminal -T \"${file_name}\" -x bash -c 'g++ -Wall -O2 \"$1\" -o \"$2\" && \"$2\"; rc=$?; echo \"\"; echo \"--------------------------------\"; echo \"(process exited with code $rc)\"; read -rp \"Press Enter to close...\"' _ \"${file}\" \"${file_path}/${file_base_name}\""
           },
           {
             "name": "Run",
@@ -82,7 +82,7 @@
         "variants": [
           {
             "name": "Run in Terminal",
-            "shell_cmd": "xfce4-terminal -T \"${file_name}\" -x bash -c 'gcc -Wall -O2 \"$1\" -o \"$2\" -lm && \"$2\"; echo \"\"; echo \"--------------------------------\"; echo \"(process exited with code $?)\"; read -rp \"Press Enter to close...\"' _ \"${file}\" \"${file_path}/${file_base_name}\""
+            "shell_cmd": "xfce4-terminal -T \"${file_name}\" -x bash -c 'gcc -Wall -O2 \"$1\" -o \"$2\" -lm && \"$2\"; rc=$?; echo \"\"; echo \"--------------------------------\"; echo \"(process exited with code $rc)\"; read -rp \"Press Enter to close...\"' _ \"${file}\" \"${file_path}/${file_base_name}\""
           },
           {
             "name": "Run",
@@ -105,7 +105,7 @@
         "variants": [
           {
             "name": "Run in Terminal",
-            "shell_cmd": "xfce4-terminal -T \"${file_name}\" -x bash -c 'python3 -u \"$1\"; echo \"\"; echo \"--------------------------------\"; echo \"(process exited with code $?)\"; read -rp \"Press Enter to close...\"' _ \"${file}\""
+            "shell_cmd": "xfce4-terminal -T \"${file_name}\" -x bash -c 'python3 -u \"$1\"; rc=$?; echo \"\"; echo \"--------------------------------\"; echo \"(process exited with code $rc)\"; read -rp \"Press Enter to close...\"' _ \"${file}\""
           },
           {
             "name": "Syntax Check",
@@ -127,7 +127,7 @@
         "variants": [
           {
             "name": "Run in Terminal",
-            "shell_cmd": "xfce4-terminal -T \"${file_name}\" -x bash -c 'javac \"$1\" && java -cp \"$2\" \"$3\"; echo \"\"; echo \"--------------------------------\"; echo \"(process exited with code $?)\"; read -rp \"Press Enter to close...\"' _ \"${file}\" \"${file_path}\" \"${file_base_name}\""
+            "shell_cmd": "xfce4-terminal -T \"${file_name}\" -x bash -c 'javac \"$1\" && java -cp \"$2\" \"$3\"; rc=$?; echo \"\"; echo \"--------------------------------\"; echo \"(process exited with code $rc)\"; read -rp \"Press Enter to close...\"' _ \"${file}\" \"${file_path}\" \"${file_base_name}\""
           },
           {
             "name": "Run",
@@ -150,7 +150,7 @@
         "variants": [
           {
             "name": "Run in Terminal",
-            "shell_cmd": "xfce4-terminal -T \"${file_name}\" -x bash -c 'kotlinc \"$1\" -include-runtime -d \"$2\" && java -jar \"$2\"; echo \"\"; echo \"--------------------------------\"; echo \"(process exited with code $?)\"; read -rp \"Press Enter to close...\"' _ \"${file}\" \"${file_path}/${file_base_name}.jar\""
+            "shell_cmd": "xfce4-terminal -T \"${file_name}\" -x bash -c 'kotlinc \"$1\" -include-runtime -d \"$2\" && java -jar \"$2\"; rc=$?; echo \"\"; echo \"--------------------------------\"; echo \"(process exited with code $rc)\"; read -rp \"Press Enter to close...\"' _ \"${file}\" \"${file_path}/${file_base_name}.jar\""
           },
           {
             "name": "Run",
@@ -170,4 +170,6 @@
     src: /etc/skel/.config/sublime-text
     dest: /home/contestant/.config/
     remote_src: true
+    owner: contestant
+    group: contestant
     mode: preserve

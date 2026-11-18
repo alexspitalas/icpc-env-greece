@@ -3,6 +3,7 @@
 
 import os
 from pathlib import Path
+import shlex
 import subprocess
 
 
@@ -41,8 +42,9 @@ def main():
         os.chmod(client_conf, 0o644)
 
         if cups_queue:
+            quoted_q = shlex.quote(cups_queue)
             print_profile.write_text(
-                f'export PRINTER="{cups_queue}"\nexport LPDEST="{cups_queue}"\n',
+                f"export PRINTER={quoted_q}\nexport LPDEST={quoted_q}\n",
                 encoding="utf-8",
             )
             os.chmod(print_profile, 0o644)
@@ -63,23 +65,23 @@ def main():
         driver = "everywhere" if uri.startswith(("ipp://", "ipps://")) else "drv:///sample.drv/generic.ppd"
 
         subprocess.run(["systemctl", "start", "cups"], check=False)
-        subprocess.run(
-            [
-                "lpadmin",
-                "-p",
-                "ContestPrinter",
-                "-v",
-                uri,
-                "-E",
-                "-m",
-                driver,
-                "-o",
-                "media=letter",
-                "-o",
-                "printer-is-shared=false",
-            ],
-            check=False,
-        )
+        lpadmin_base = [
+            "lpadmin",
+            "-p",
+            "ContestPrinter",
+            "-v",
+            uri,
+            "-E",
+            "-o",
+            "media=letter",
+            "-o",
+            "printer-is-shared=false",
+        ]
+        res = subprocess.run([*lpadmin_base, "-m", driver], check=False)
+        if res.returncode != 0 and driver == "everywhere":
+            # Fallback to Generic PostScript PPD when IPP Everywhere discovery cannot
+            # reach the print server yet (e.g. during offline image builds).
+            subprocess.run([*lpadmin_base, "-m", "drv:///sample.drv/generic.ppd"], check=False)
         subprocess.run(["lpadmin", "-d", "ContestPrinter"], check=False)
         subprocess.run(["cupsenable", "ContestPrinter"], check=False)
         subprocess.run(["cupsaccept", "ContestPrinter"], check=False)

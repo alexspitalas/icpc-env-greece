@@ -218,8 +218,9 @@ def configure_print_team(w: Whiptail, force: bool = False):
         )
         entered = entered.strip()
         if code == 0 and entered:
-            Path("/icpc/PRINT_TEAM").write_text(entered + "\n", encoding="utf-8")
-            os.chmod("/icpc/PRINT_TEAM", 0o644)
+            for fname in ("/icpc/PRINT_TEAM", "/icpc/TEAMNAME", "/icpc/TEAM"):
+                Path(fname).write_text(entered + "\n", encoding="utf-8")
+                os.chmod(fname, 0o644)
             break
         w.msgbox("Team name cannot be empty.")
 
@@ -248,8 +249,9 @@ def configure_domjudge(w: Whiptail, force: bool = False):
 
     w.title = "ICPC Setup - DOMjudge Configuration"
     username = existing_user or ""
+    prompt_url = (not url_valid) or force
     while True:
-        if not url_valid or force:
+        if prompt_url:
             entered_url, code = w.inputbox(
                 msg="Enter the DOMjudge server URL (e.g. https://judge.example.com/):",
                 default=url,

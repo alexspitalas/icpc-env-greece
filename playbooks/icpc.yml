@@ -32,11 +32,15 @@
     content: |
       export PATH="/icpc/scripts:$PATH"
 
-- name: ensure interactive non-login bash shells load DOMjudge environment if configured
+- name: ensure interactive non-login bash shells load ICPC and DOMjudge environment if configured
   lineinfile:
     path: /etc/bash.bashrc
-    line: '[ -r /etc/profile.d/domjudge.sh ] && . /etc/profile.d/domjudge.sh'
+    line: "{{ item }}"
     state: present
+  loop:
+    - '[ -r /etc/profile.d/icpc_path.sh ] && . /etc/profile.d/icpc_path.sh'
+    - '[ -r /etc/profile.d/domjudge.sh ] && . /etc/profile.d/domjudge.sh'
+    - '[ -r /etc/profile.d/icpc_print.sh ] && . /etc/profile.d/icpc_print.sh'
 
 - name: install DOMjudge command-line submit client binary
   copy:

@@ -40,6 +40,11 @@ do
 done
 lpadmin -x ContestPrinter
 
+# Re-apply configured print server if set in /icpc/PRINT_*
+if [ -x "$UTILDIR/scripts/printing_configure" ]; then
+  "$UTILDIR/scripts/printing_configure"
+fi
+
 # Cleanup apt cache/unnecessary package
 apt-get autoremove --purge -y
 apt-get clean

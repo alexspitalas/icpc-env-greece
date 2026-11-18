@@ -23,7 +23,7 @@
       changed_when: false
 
     - name: install node_exporter binary from local files/
-      when: node_exporter_current.rc != 0 or (('version ' ~ node_exporter_ver ~ ' ') not in (node_exporter_current.stdout | default('')))
+      when: node_exporter_current.rc != 0 or (('version ' ~ node_exporter_ver ~ ' ') not in ((node_exporter_current.stdout | default('')) ~ ' ' ~ (node_exporter_current.stderr | default(''))))
       block:
         - name: check if local node_exporter archive exists in files/
           stat:
@@ -178,6 +178,7 @@
           PathChanged=/icpc/TEAMNAME
           PathChanged=/icpc/TEAMAFFILIATION
           PathChanged=/icpc/PRINT_TEAM
+          PathChanged=/icpc/domjudge_credentials
           PathChanged=/icpc/version
           PathChanged=/icpc/update-version
 

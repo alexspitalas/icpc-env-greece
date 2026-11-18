@@ -33,9 +33,13 @@ def resolve_domjudge_team_name(domjudge_url: str, username: str, password: str) 
             info = resp.json()
             if isinstance(info, dict):
                 for key in ("team", "name", "username"):
-                    val = str(info.get(key) or "").strip()
-                    if val:
-                        return val
+                    raw = info.get(key)
+                    if isinstance(raw, dict):
+                        raw = raw.get("display_name") or raw.get("name")
+                    if isinstance(raw, str):
+                        val = raw.strip()
+                        if val:
+                            return val
     except Exception:
         pass
     return username
@@ -218,9 +222,13 @@ def main():
                 squid_changed = ensure_allowed_domain(acl_path, hostname) or squid_changed
 
             print_team_path = icpc_dir / "PRINT_TEAM"
-            if not read_text_stripped(print_team_path):
+            team_display = read_text_stripped(print_team_path)
+            if not team_display:
                 team_display = resolve_domjudge_team_name(domjudge_url, username, password)
                 write_if_changed(print_team_path, team_display + "\n", 0o644, 0, 0)
+            write_if_changed(icpc_dir / "TEAMID", username + "\n", 0o644, 0, 0)
+            write_if_changed(icpc_dir / "TEAMNAME", team_display + "\n", 0o644, 0, 0)
+            write_if_changed(icpc_dir / "TEAM", team_display + "\n", 0o644, 0, 0)
 
             if autologin_path.parent.exists():
                 base_no_slash = domjudge_url.rstrip("/")

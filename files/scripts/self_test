@@ -99,8 +99,8 @@ if [ "$DOMJUDGE_ENABLED" = "true" ] || grep -q 'acl autologin url_regex' /etc/sq
   if [ $? -eq 0 ]; then
     echo "${GREEN}Yes${RESET}"
     print_check "    Team Login"
-    DJTEAM=$(cat /etc/squid/autologin.conf | awk '/X-DOMjudge-Login/{print $3}' | tr -d '"')
-    echo $DJTEAM
+    DJTEAM=$(sed -n 's/^request_header_add X-DOMjudge-Login "\(.*\)" autologin$/\1/p' /etc/squid/autologin.conf 2>/dev/null)
+    echo "$DJTEAM"
   else
     echo "${ORANGE}No${RESET}"
   fi
@@ -108,7 +108,7 @@ fi
 
 echo
 echo "${BLUE}Printing Configuration${RESET}"
-PRINT_MODE_VAL="$(cat /icpc/PRINT_MODE 2>/dev/null)"
+PRINT_MODE_VAL="$(tr -d '[:space:]' < /icpc/PRINT_MODE 2>/dev/null | tr '[:upper:]' '[:lower:]')"
 if [ -n "$PRINT_MODE_VAL" ]; then
   print_check "Print Mode"
   echo "$PRINT_MODE_VAL"
@@ -118,18 +118,54 @@ if [ -n "$PRINT_TEAM_VAL" ]; then
   print_check "Print Team Header"
   echo "$PRINT_TEAM_VAL"
 fi
-print_check "Making sure cups is running"
-check_service 'cups'
-PRINTERS=$(lpstat -v 2>/dev/null| grep -v ContestPrinter | sed -e 's|socket://||' -e 's|:||' | awk '{printf "    %-56s%s\n", $3, $4}')
-NUMPRINTERS=$(echo -n "$PRINTERS" | grep -c Printer)
-print_check "Checking there are printers present"
-if [ "$NUMPRINTERS" -eq "0" ]; then
-  print_fail
-else
-  print_ok
-fi
-echo "Configured Printers:"
-echo "$PRINTERS"
+case "$PRINT_MODE_VAL" in
+  domjudge)
+    print_check "Printing via DOMjudge API"
+    if [ -x /usr/local/bin/submit ] && [ -s /home/contestant/.netrc ]; then
+      print_ok
+    else
+      print_fail
+    fi
+    ;;
+  http)
+    HTTP_PRINT_URL="$(cat /icpc/PRINT_SERVER_URL 2>/dev/null)"
+    if [ -z "$HTTP_PRINT_URL" ]; then
+      HTTP_PRINT_IP="$(cat /icpc/PRINT_SERVER_IP 2>/dev/null)"
+      if [ -n "$HTTP_PRINT_IP" ]; then
+        HTTP_PRINT_URL="http://${HTTP_PRINT_IP}/print"
+      fi
+    fi
+    print_check "HTTP Print Server"
+    if [ -n "$HTTP_PRINT_URL" ]; then
+      echo "$HTTP_PRINT_URL"
+    else
+      print_fail
+    fi
+    ;;
+  cups)
+    CUPS_SERVER_VAL="$(awk '/^ServerName/{print $2}' /etc/cups/client.conf 2>/dev/null)"
+    print_check "Remote CUPS Server"
+    if [ -n "$CUPS_SERVER_VAL" ]; then
+      echo "$CUPS_SERVER_VAL"
+    else
+      print_fail
+    fi
+    ;;
+  *)
+    print_check "Making sure cups is running"
+    check_service 'cups'
+    PRINTERS=$(lpstat -v 2>/dev/null | sed -e 's|socket://||' -e 's|:||' | awk '{printf "    %-56s%s\n", $3, $4}')
+    NUMPRINTERS=$(echo -n "$PRINTERS" | grep -cE '(Printer|ContestPrinter)')
+    print_check "Checking there are printers present"
+    if [ "$NUMPRINTERS" -eq "0" ]; then
+      print_fail
+    else
+      print_ok
+    fi
+    echo "Configured Printers:"
+    echo "$PRINTERS"
+    ;;
+esac
 
 echo
 echo "${BLUE}Connectivity Test${RESET}"
