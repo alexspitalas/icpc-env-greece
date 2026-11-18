@@ -53,7 +53,8 @@ deny_info ICPC_ERR_ACCESS_DENIED all
 {% for domain in auth_token_domains %}
 acl contest_server dstdomain .{{ domain }}
 {% endfor %}
-request_header_add Authorization "Bearer {{ auth_token }}" contest_server
+acl has_auth_header req_header Authorization .+
+request_header_add Authorization "Bearer {{ auth_token }}" contest_server !has_auth_header
 {% endif %}
 
 coredump_dir /var/spool/squid
@@ -68,9 +69,7 @@ ssl_bump bump all
 # And also because our block page has no good ssl certificate
 sslproxy_cert_error allow all
 
-{% if squid_autologin_urls|length > 0 %}
-{% for url in squid_autologin_urls %}
-acl autologin url_regex {{url}}
+{% for url in (squid_autologin_urls | default([])) %}
+acl autologin url_regex {{ url }}
 {% endfor %}
 include /etc/squid/autologin.conf
-{% endif%}

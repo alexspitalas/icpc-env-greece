@@ -71,15 +71,36 @@ NOSITE="${RED}Not Set${RESET}"
 SITENAME="${SITENAME:-$NOSITE}"
 echo $SITENAME
 
-# only check domjudge autologin if there are autologin urls defined
-if grep -q 'acl autologin url_regex' /etc/squid/squid.conf ; then
+INSTALL_TARGET_VAL="$(cat /icpc/INSTALL_TARGET 2>/dev/null)"
+if [ -n "$INSTALL_TARGET_VAL" ]; then
+  print_check "Install Target"
+  echo "$INSTALL_TARGET_VAL"
+fi
+
+# check DOMjudge configuration if enabled or autologin urls are defined
+DOMJUDGE_ENABLED=$(cat /icpc/DOMJUDGE_ENABLED 2>/dev/null)
+if [ "$DOMJUDGE_ENABLED" = "true" ] || grep -q 'acl autologin url_regex' /etc/squid/squid.conf ; then
+  print_check "DOMjudge Enabled"
+  echo "${GREEN}Yes${RESET}"
+
+  print_check "DOMjudge URL"
+  DJURL="$(cat /icpc/JUDGE_SYSTEM_URL 2>/dev/null)"
+  echo "${DJURL:-${RED}Not Set${RESET}}"
+
+  print_check "DOMjudge Submit Client"
+  if [ -x /usr/local/bin/submit ] && [ -s /home/contestant/.netrc ]; then
+    print_ok
+  else
+    print_fail
+  fi
+
   print_check "DOMjudge Autologin Configured"
   cat /etc/squid/autologin.conf 2>/dev/null | grep "X-DOMjudge" > /dev/null
   if [ $? -eq 0 ]; then
     echo "${GREEN}Yes${RESET}"
     print_check "    Team Login"
-    DJTEAM=$(cat /etc/squid/autologin.conf | awk '/X-DOMjudge-Login/{print $3}' | tr -d '"')
-    echo $DJTEAM
+    DJTEAM=$(sed -n 's/^request_header_add X-DOMjudge-Login "\(.*\)" autologin$/\1/p' /etc/squid/autologin.conf 2>/dev/null)
+    echo "$DJTEAM"
   else
     echo "${ORANGE}No${RESET}"
   fi
@@ -87,18 +108,64 @@ fi
 
 echo
 echo "${BLUE}Printing Configuration${RESET}"
-print_check "Making sure cups is running"
-check_service 'cups'
-PRINTERS=$(lpstat -v 2>/dev/null| grep -v ContestPrinter | sed -e 's|socket://||' -e 's|:||' | awk '{printf "    %-56s%s\n", $3, $4}')
-NUMPRINTERS=$(echo -n "$PRINTERS" | grep -c Printer)
-print_check "Checking there are printers present"
-if [ "$NUMPRINTERS" -eq "0" ]; then
-  print_fail
-else
-  print_ok
+PRINT_MODE_VAL="$(tr -d '[:space:]' < /icpc/PRINT_MODE 2>/dev/null | tr '[:upper:]' '[:lower:]')"
+if [ -n "$PRINT_MODE_VAL" ]; then
+  print_check "Print Mode"
+  echo "$PRINT_MODE_VAL"
 fi
-echo "Configured Printers:"
-echo "$PRINTERS"
+PRINT_TEAM_VAL="$(cat /icpc/PRINT_TEAM 2>/dev/null)"
+if [ -n "$PRINT_TEAM_VAL" ]; then
+  print_check "Print Team Header"
+  echo "$PRINT_TEAM_VAL"
+fi
+case "$PRINT_MODE_VAL" in
+  domjudge)
+    print_check "Printing via DOMjudge API"
+    if [ -x /usr/local/bin/submit ] && [ -s /home/contestant/.netrc ]; then
+      print_ok
+    else
+      print_fail
+    fi
+    ;;
+  http)
+    HTTP_PRINT_URL="$(cat /icpc/PRINT_SERVER_URL 2>/dev/null)"
+    if [ -z "$HTTP_PRINT_URL" ]; then
+      HTTP_PRINT_IP="$(cat /icpc/PRINT_SERVER_IP 2>/dev/null)"
+      if [ -n "$HTTP_PRINT_IP" ]; then
+        HTTP_PRINT_URL="http://${HTTP_PRINT_IP}/print"
+      fi
+    fi
+    print_check "HTTP Print Server"
+    if [ -n "$HTTP_PRINT_URL" ]; then
+      echo "$HTTP_PRINT_URL"
+    else
+      print_fail
+    fi
+    ;;
+  cups)
+    CUPS_SERVER_VAL="$(awk '/^ServerName/{print $2}' /etc/cups/client.conf 2>/dev/null)"
+    print_check "Remote CUPS Server"
+    if [ -n "$CUPS_SERVER_VAL" ]; then
+      echo "$CUPS_SERVER_VAL"
+    else
+      print_fail
+    fi
+    ;;
+  *)
+    print_check "Making sure cups is running"
+    check_service 'cups'
+    PRINTERS=$(lpstat -v 2>/dev/null | sed -e 's|socket://||' -e 's|:||' | awk '{printf "    %-56s%s\n", $3, $4}')
+    NUMPRINTERS=$(echo -n "$PRINTERS" | grep -cE '(Printer|ContestPrinter)')
+    print_check "Checking there are printers present"
+    if [ "$NUMPRINTERS" -eq "0" ]; then
+      print_fail
+    else
+      print_ok
+    fi
+    echo "Configured Printers:"
+    echo "$PRINTERS"
+    ;;
+esac
 
 echo
 echo "${BLUE}Connectivity Test${RESET}"
@@ -110,18 +177,32 @@ check_return $?
 print_check "Making sure the squid proxy is running"
 check_service 'squid'
 
+if [ -f /etc/systemd/system/node_exporter.service ]; then
+  print_check "Making sure node_exporter is running"
+  check_service 'node_exporter'
+fi
+
 print_check "Testing access to google is blocked with a proxy error"
 curl -s --proxy http://127.0.0.1:3128 http://google.com 2>/dev/null | grep "<h1>Access Denied</h1>" > /dev/null
 check_return $?
 
-while IFS="" read -r url ; do
-  [ -z "$url" ] && continue
-  print_check "Testing access to $url is successful with proxy"
-  # wget -e use_proxy=yes -T 5 -t 1 -e http_proxy=127.0.0.1:3128 -e https_proxy=127.0.0.1:3128 -O- --no-check-certificate $url 2>/dev/null | grep -i "html" > /dev/null
-  curl --proxy http://127.0.0.1:3128 --connect-timeout 5 --max-time 10 --silent -o /dev/null --fail $url
+if [ -f /icpc/config_homepage ]; then
+  while IFS="" read -r url ; do
+    [ -z "$url" ] && continue
+    print_check "Testing access to $url is successful with proxy"
+    # wget -e use_proxy=yes -T 5 -t 1 -e http_proxy=127.0.0.1:3128 -e https_proxy=127.0.0.1:3128 -O- --no-check-certificate $url 2>/dev/null | grep -i "html" > /dev/null
+    curl --proxy http://127.0.0.1:3128 --connect-timeout 5 --max-time 10 --silent -o /dev/null --fail $url
+    check_return $?
+    break # only check one url from the list
+  done < /icpc/config_homepage
+fi
+
+if [ "$DOMJUDGE_ENABLED" = "true" ] && [ -s /icpc/JUDGE_SYSTEM_URL ]; then
+  DJURL="$(cat /icpc/JUDGE_SYSTEM_URL 2>/dev/null)"
+  print_check "Testing access to DOMjudge ($DJURL) with proxy"
+  curl --proxy http://127.0.0.1:3128 --connect-timeout 5 --max-time 10 --silent -L -o /dev/null --fail "$DJURL"
   check_return $?
-  break # only check one url from the list
-done < /icpc/config_homepage
+fi
 
 print_check "Testing direct internet access is disabled"
 su - contestant -c 'curl --noproxy "*" --connect-timeout 5 --max-time 10 --silent --fail -o /dev/null http://google.com' 2>/dev/null

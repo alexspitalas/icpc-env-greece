@@ -1,0 +1,261 @@
+---
+# Optional Prometheus node_exporter setup for contestant image monitoring
+# Controlled by node_exporter_* variables in group_vars/all (see group_vars/all.dist)
+
+- name: set node_exporter derived variables
+  set_fact:
+    node_exporter_ver: "{{ node_exporter_version | default('1.12.1') | string | regex_replace('^v', '') }}"
+    node_exporter_arch: "{{ {'x86_64': 'amd64', 'aarch64': 'arm64', 'armv7l': 'armv7'}.get(ansible_architecture, 'amd64') }}"
+    node_exporter_listen_port: "{{ node_exporter_port | default(9100) | int }}"
+
+- name: set node_exporter archive coordinates
+  set_fact:
+    node_exporter_tarball: "node_exporter-{{ node_exporter_ver }}.linux-{{ node_exporter_arch }}.tar.gz"
+    node_exporter_extracted_dir: "node_exporter-{{ node_exporter_ver }}.linux-{{ node_exporter_arch }}"
+
+- name: install and configure Prometheus node_exporter when enabled
+  when: node_exporter_enabled | default(false) | bool
+  block:
+    - name: check installed node_exporter version
+      command: /usr/local/bin/node_exporter --version
+      register: node_exporter_current
+      failed_when: false
+      changed_when: false
+
+    - name: install node_exporter binary from local files/
+      when: node_exporter_current.rc != 0 or (('version ' ~ node_exporter_ver ~ ' ') not in ((node_exporter_current.stdout | default('')) ~ ' ' ~ (node_exporter_current.stderr | default(''))))
+      block:
+        - name: check if local node_exporter archive exists in files/
+          stat:
+            path: "files/{{ node_exporter_tarball }}"
+          delegate_to: 127.0.0.1
+          become: false
+          register: node_exporter_local_tarball
+
+        - name: fail if local node_exporter archive is missing
+          when: not node_exporter_local_tarball.stat.exists
+          fail:
+            msg: >-
+              Missing files/{{ node_exporter_tarball }}. Download it from
+              https://github.com/prometheus/node_exporter/releases/download/v{{ node_exporter_ver }}/{{ node_exporter_tarball }}
+              into files/ (or set node_exporter_enabled: false in group_vars/all).
+
+        - name: create temporary extraction directory for node_exporter
+          file:
+            path: /tmp/node_exporter_extract
+            state: directory
+            mode: '0755'
+
+        - name: extract local node_exporter archive
+          unarchive:
+            src: "files/{{ node_exporter_tarball }}"
+            dest: /tmp/node_exporter_extract
+
+        - name: install node_exporter binary to /usr/local/bin
+          copy:
+            src: "/tmp/node_exporter_extract/{{ node_exporter_extracted_dir }}/node_exporter"
+            dest: /usr/local/bin/node_exporter
+            remote_src: yes
+            owner: root
+            group: root
+            mode: '0755'
+          notify: restart node_exporter
+
+        - name: clean up temporary node_exporter extraction directory
+          file:
+            path: /tmp/node_exporter_extract
+            state: absent
+
+    - name: create node_exporter system group
+      group:
+        name: node_exporter
+        system: yes
+        state: present
+
+    - name: create node_exporter system user
+      user:
+        name: node_exporter
+        group: node_exporter
+        system: yes
+        shell: /usr/sbin/nologin
+        create_home: no
+        home: /nonexistent
+        state: present
+
+    - name: create node_exporter textfile collector directory
+      file:
+        path: /var/lib/prometheus/node-exporter
+        state: directory
+        owner: node_exporter
+        group: node_exporter
+        mode: '0755'
+
+    - name: configure /etc/default/node_exporter
+      copy:
+        dest: /etc/default/node_exporter
+        owner: root
+        group: root
+        mode: '0644'
+        content: |
+          NODE_EXPORTER_OPTS="--web.listen-address=:{{ node_exporter_listen_port }} --collector.textfile.directory=/var/lib/prometheus/node-exporter{{ (' ' ~ (node_exporter_extra_args | default('') | trim)) if (node_exporter_extra_args | default('') | trim | length > 0) else '' }}"
+      notify: restart node_exporter
+
+    - name: install node_exporter systemd service unit
+      copy:
+        dest: /etc/systemd/system/node_exporter.service
+        owner: root
+        group: root
+        mode: '0644'
+        content: |
+          [Unit]
+          Description=Prometheus Node Exporter
+          Documentation=https://github.com/prometheus/node_exporter
+          Wants=network-online.target
+          After=network-online.target
+
+          [Service]
+          User=node_exporter
+          Group=node_exporter
+          Type=simple
+          EnvironmentFile=-/etc/default/node_exporter
+          ExecStart=/usr/local/bin/node_exporter $NODE_EXPORTER_OPTS
+          Restart=on-failure
+          RestartSec=5s
+
+          # Run at low CPU/IO priority so monitoring never affects contestant workloads
+          CPUSchedulingPolicy=other
+          Nice=19
+          IOSchedulingClass=idle
+
+          # Hardening
+          NoNewPrivileges=true
+          ProtectSystem=strict
+          PrivateTmp=true
+
+          [Install]
+          WantedBy=multi-user.target
+      notify: restart node_exporter
+
+    - name: install icpc-metrics textfile exporter script
+      copy:
+        src: files/icpc-metrics
+        dest: /usr/local/bin/icpc-metrics
+        owner: root
+        group: root
+        mode: '0755'
+
+    - name: install icpc-static-node-exporter systemd service
+      copy:
+        dest: /etc/systemd/system/icpc-static-node-exporter.service
+        owner: root
+        group: root
+        mode: '0644'
+        content: |
+          [Unit]
+          Description=Update static node_exporter textfile metrics with ICPC metadata
+          After=local-fs.target
+
+          [Service]
+          Type=oneshot
+          ExecStart=/usr/local/bin/icpc-metrics
+
+          [Install]
+          WantedBy=multi-user.target
+
+    - name: install icpc-static-node-exporter systemd path watcher
+      copy:
+        dest: /etc/systemd/system/icpc-static-node-exporter.path
+        owner: root
+        group: root
+        mode: '0644'
+        content: |
+          [Unit]
+          Description=Watch ICPC metadata files for node_exporter textfile updates
+
+          [Path]
+          PathChanged=/icpc/SITE
+          PathChanged=/icpc/TEAMID
+          PathChanged=/icpc/TEAMNAME
+          PathChanged=/icpc/TEAMAFFILIATION
+          PathChanged=/icpc/PRINT_TEAM
+          PathChanged=/icpc/domjudge_credentials
+          PathChanged=/icpc/version
+          PathChanged=/icpc/update-version
+
+          [Install]
+          WantedBy=multi-user.target
+
+    - name: enable and start node_exporter and icpc-static-node-exporter units
+      systemd:
+        name: "{{ item }}"
+        daemon_reload: yes
+        enabled: yes
+        state: started
+      loop:
+        - node_exporter.service
+        - icpc-static-node-exporter.service
+        - icpc-static-node-exporter.path
+
+    - name: allow inbound Prometheus scrapes on node_exporter port from anywhere when no IP list is set
+      when: (node_exporter_allowed_ips | default([])) | length == 0
+      ufw:
+        rule: allow
+        direction: in
+        proto: tcp
+        port: "{{ node_exporter_listen_port | string }}"
+        comment: "Prometheus node_exporter"
+
+    - name: allow inbound Prometheus scrapes on node_exporter port from configured IPs/CIDRs
+      when: (node_exporter_allowed_ips | default([])) | length > 0
+      ufw:
+        rule: allow
+        direction: in
+        proto: tcp
+        from_ip: "{{ item }}"
+        port: "{{ node_exporter_listen_port | string }}"
+        comment: "Prometheus node_exporter"
+      loop: "{{ node_exporter_allowed_ips }}"
+
+- name: disable Prometheus node_exporter if present when disabled
+  when: not (node_exporter_enabled | default(false) | bool)
+  block:
+    - name: check if node_exporter systemd unit exists
+      stat:
+        path: /etc/systemd/system/node_exporter.service
+      register: node_exporter_unit_stat
+
+    - name: stop and disable node_exporter services when disabled
+      when: node_exporter_unit_stat.stat.exists
+      systemd:
+        name: "{{ item }}"
+        enabled: no
+        state: stopped
+      failed_when: false
+      loop:
+        - node_exporter.service
+        - icpc-static-node-exporter.path
+        - icpc-static-node-exporter.service
+
+    - name: remove generic UFW rule for node_exporter when disabled
+      when: node_exporter_unit_stat.stat.exists
+      ufw:
+        rule: allow
+        direction: in
+        proto: tcp
+        port: "{{ node_exporter_listen_port | string }}"
+        delete: yes
+      failed_when: false
+
+    - name: remove IP-restricted UFW rules for node_exporter when disabled
+      when:
+        - node_exporter_unit_stat.stat.exists
+        - (node_exporter_allowed_ips | default([])) | length > 0
+      ufw:
+        rule: allow
+        direction: in
+        proto: tcp
+        from_ip: "{{ item }}"
+        port: "{{ node_exporter_listen_port | string }}"
+        delete: yes
+      failed_when: false
+      loop: "{{ node_exporter_allowed_ips }}"

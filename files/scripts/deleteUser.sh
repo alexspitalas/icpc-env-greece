@@ -40,6 +40,11 @@ echo "Recreating contestant user"
 useradd -d /home/contestant -m contestant -G lpadmin -s /bin/bash
 passwd -d contestant
 
+# Restore DOMjudge ~/.netrc if DOMjudge credentials are saved (or clear autologin if removed)
+if [[ -x /icpc/scripts/domjudge_apply_creds ]]; then
+    /icpc/scripts/domjudge_apply_creds --reload-squid
+fi
+
 # RESTORE: Bring back important files
 echo "Restoring critical files..."
 

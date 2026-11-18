@@ -1,0 +1,91 @@
+#!/usr/bin/env python3
+"""Configure workstation printing from /icpc/PRINT_* settings."""
+
+import os
+from pathlib import Path
+import shlex
+import subprocess
+
+
+def read_text(path: Path) -> str:
+    try:
+        return path.read_text(encoding="utf-8").strip()
+    except OSError:
+        return ""
+
+
+def normalize_ipp_uri(ip_or_uri: str) -> str:
+    val = ip_or_uri.strip()
+    if not val:
+        return ""
+    if "://" in val:
+        return val
+    return f"ipp://{val}/ipp/print"
+
+
+def main():
+    icpc_dir = Path(os.environ.get("ICPC_DIR", "/icpc"))
+    cups_dir = Path(os.environ.get("CUPS_DIR", "/etc/cups"))
+    profile_d_dir = Path(os.environ.get("PROFILE_D_DIR", "/etc/profile.d"))
+
+    mode = read_text(icpc_dir / "PRINT_MODE").lower() or "local"
+    server_ip = read_text(icpc_dir / "PRINT_SERVER_IP")
+    server_uri = read_text(icpc_dir / "PRINT_SERVER_URI")
+    cups_queue = read_text(icpc_dir / "PRINT_SERVER_CUPS_QUEUE")
+
+    client_conf = cups_dir / "client.conf"
+    print_profile = profile_d_dir / "icpc_print.sh"
+
+    if mode == "cups" and server_ip:
+        cups_dir.mkdir(parents=True, exist_ok=True)
+        client_conf.write_text(f"ServerName {server_ip}\n", encoding="utf-8")
+        os.chmod(client_conf, 0o644)
+
+        if cups_queue:
+            quoted_q = shlex.quote(cups_queue)
+            print_profile.write_text(
+                f"export PRINTER={quoted_q}\nexport LPDEST={quoted_q}\n",
+                encoding="utf-8",
+            )
+            os.chmod(print_profile, 0o644)
+        elif print_profile.exists():
+            print_profile.unlink()
+        return
+
+    # Not in remote CUPS client mode: remove client.conf and queue overrides
+    if client_conf.exists():
+        client_conf.unlink()
+    if print_profile.exists():
+        print_profile.unlink()
+
+    if mode == "ipp":
+        uri = normalize_ipp_uri(server_uri or server_ip)
+        if not uri:
+            return
+        driver = "everywhere" if uri.startswith(("ipp://", "ipps://")) else "drv:///sample.drv/generic.ppd"
+
+        subprocess.run(["systemctl", "start", "cups"], check=False)
+        lpadmin_base = [
+            "lpadmin",
+            "-p",
+            "ContestPrinter",
+            "-v",
+            uri,
+            "-E",
+            "-o",
+            "media=letter",
+            "-o",
+            "printer-is-shared=false",
+        ]
+        res = subprocess.run([*lpadmin_base, "-m", driver], check=False)
+        if res.returncode != 0 and driver == "everywhere":
+            # Fallback to Generic PostScript PPD when IPP Everywhere discovery cannot
+            # reach the print server yet (e.g. during offline image builds).
+            subprocess.run([*lpadmin_base, "-m", "drv:///sample.drv/generic.ppd"], check=False)
+        subprocess.run(["lpadmin", "-d", "ContestPrinter"], check=False)
+        subprocess.run(["cupsenable", "ContestPrinter"], check=False)
+        subprocess.run(["cupsaccept", "ContestPrinter"], check=False)
+
+
+if __name__ == "__main__":
+    main()

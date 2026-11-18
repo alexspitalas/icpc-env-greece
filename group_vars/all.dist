@@ -16,6 +16,21 @@ icpcadmin_pass: icpcadmin
 icpcadmin_ssh_keys: []
   # - "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAA..."
 
+# ===== Target Storage / Boot Medium =====
+# Select where the built image will be installed and booted from:
+#   "usb" : Booted from an external USB flash drive (default). Keeps USB stability
+#           workarounds enabled (blacklists UAS, disables USB autosuspend/LPM,
+#           caps dirty page writeback in 99-usb-flush.conf, preloads FS cache on
+#           boot via warm-fs-cache/vmtouch, disables fstrim.timer, and keeps
+#           journald logs volatile).
+#   "ssd" : Installed directly on the PCs' internal SATA/NVMe SSD. Removes USB-flash
+#           throttling/workarounds (allows UAS, removes dirty-buffer writeback caps,
+#           drops usbcore LPM/autosuspend kernel params, disables warm-fs-cache boot
+#           preloading, enables weekly fstrim.timer, and persists journald logs with
+#           a 100M cap). Note: pass `--no-usb` to ./create_baseimg.sh as well if you
+#           do not need the 192MB FAT32 ICPC transfer partition.
+install_target: "usb"
+
 #The auth token that is used to allow traffic to the server
 auth_token: "1234"
 # Domains (and their subdomains) that squid sends "Authorization: Bearer <auth_token>" to
@@ -26,6 +41,72 @@ auth_token_domains:
 # TODO: allow https as well :/
 squid_autologin_urls: []
   # - ^http://ser2019.cloudcontest.org/login
+
+# URL of the contest judging system (used by the "Judge System" button in the Firefox
+# guide, and as the DOMjudge server URL without trailing 'team/' when domjudge_enabled is true),
+# e.g. "https://judge.example.com/"
+judge_system_url: ""
+
+# ===== DOMjudge Configuration =====
+# Set to true when the contest is hosted on DOMjudge (uses judge_system_url above).
+# When false, DOMjudge submit client configuration, boot credential prompts,
+# and Squid X-Header auto-login are disabled.
+domjudge_enabled: false
+
+# Optional: Contest ID or short name for `submit` (needed if multiple contests are active)
+domjudge_contest: ""
+
+# Optional: Pre-configured team credentials for DOMjudge.
+# If either is left empty while domjudge_enabled is true, the system will prompt
+# for the team username and password on boot and save them to /icpc/domjudge_credentials.
+domjudge_username: ""
+domjudge_password: ""
+
+# ===== Printing Configuration =====
+# How `djprint` and `submit -P` route print jobs.
+#   "auto"     : Use "http" if print_server_url is set, "ipp" if print_server_uri or
+#                print_server_ip is set, otherwise "domjudge" (when domjudge_enabled
+#                is true) or local CUPS default printer.
+#   "domjudge" : Print via DOMjudge 9+ (`submit --print` -> api/printing/team).
+#   "ipp"      : Configure local CUPS printer pointing to print_server_uri /
+#                print_server_ip and print via enscript with the team name header.
+#   "cups"     : Point /etc/cups/client.conf ServerName to print_server_ip and print
+#                via enscript with the team name header.
+#   "http"     : POST print jobs (file + team name) to print_server_url /
+#                http://<print_server_ip>/print.
+print_mode: "auto"
+
+# Optional print server IP or hostname (can differ from DOMjudge server IP).
+print_server_ip: ""
+
+# Optional overrides per mode:
+# - "ipp" mode URI (defaults to "ipp://<print_server_ip>/ipp/print" if empty;
+#   also supports e.g. "ipp://<ip>:631/printers/Queue" or "socket://<ip>:9100")
+print_server_uri: ""
+# - "cups" mode remote queue name (optional; sets default LPDEST/PRINTER)
+print_server_cups_queue: ""
+# - "http" mode endpoint URL (defaults to "http://<print_server_ip>/print" if empty)
+print_server_url: ""
+
+# ===== Monitoring (Prometheus node_exporter) =====
+# Set to true to install and enable Prometheus node_exporter on contestant images
+# (https://github.com/prometheus/node_exporter) so Prometheus/Grafana can scrape metrics.
+node_exporter_enabled: false
+
+# Upstream release version from https://github.com/prometheus/node_exporter/releases
+node_exporter_version: "1.12.1"
+
+# TCP port for node_exporter to listen on (opened inbound in UFW when enabled).
+node_exporter_port: 9100
+
+# Optional list of Prometheus server IPs or CIDRs allowed to scrape node_exporter.
+# When empty ([]), inbound TCP to node_exporter_port is allowed from any source.
+# Example: ["192.168.1.10", "10.0.0.0/24"]
+node_exporter_allowed_ips: []
+
+# Optional extra CLI flags passed to node_exporter (e.g. "--collector.systemd")
+node_exporter_extra_args: ""
+
 allowed_domains:
   - cppreference.com
   - docs.python.org
@@ -53,6 +134,7 @@ devtools:
   - codeblocks
   - geany
   - vscode
+  - sublime-text
   - eclipse
   - netbeans
   - intellij-idea

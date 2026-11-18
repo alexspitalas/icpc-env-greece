@@ -27,15 +27,43 @@
 - name: push a better default network interfaces file
   copy: src=files/01-netcfg.yaml dest=/etc/netplan/01-netcfg.yaml
 
-- name: disable console blanking and configure usb stability parameters
+- name: resolve and validate effective install target
+  set_fact:
+    sys_install_target: "{{ effective_install_target | default(install_target | default('usb') | lower | trim) }}"
+
+- name: ensure sys_install_target is valid
+  assert:
+    that:
+      - sys_install_target in ['usb', 'ssd']
+    fail_msg: "Invalid install_target '{{ sys_install_target }}'. Expected 'usb' or 'ssd'."
+
+- name: record install target medium
+  copy:
+    dest: /icpc/INSTALL_TARGET
+    content: "{{ sys_install_target }}\n"
+    owner: root
+    group: root
+    mode: '0644'
+
+- name: set kernel command line parameters for target storage medium
+  set_fact:
+    icpc_grub_cmdline: >-
+      {{
+        'biosdevname=0 consoleblank=0 net.ifnames=0 '
+        ~ ('usbcore.autosuspend=-1 usbcore.lpm_disable=1 modprobe.blacklist=uas ' if sys_install_target == 'usb' else '')
+        ~ 'intel_iommu=off pcie_aspm=off nouveau.noaccel=1 i915.enable_psr=0'
+      }}
+
+- name: disable console blanking and configure storage and gpu stability parameters
   lineinfile:
     dest: /etc/default/grub
     regexp: "^GRUB_CMDLINE_LINUX_DEFAULT"
-    line: 'GRUB_CMDLINE_LINUX_DEFAULT="biosdevname=0 consoleblank=0 net.ifnames=0 usbcore.autosuspend=-1 usbcore.lpm_disable=1 modprobe.blacklist=uas"'
+    line: 'GRUB_CMDLINE_LINUX_DEFAULT="{{ icpc_grub_cmdline }}"'
     state: present
   notify: update grub
 
 - name: tune vm dirty memory limits for usb flash drive stability
+  when: sys_install_target == 'usb'
   copy:
     dest: /etc/sysctl.d/99-usb-flush.conf
     content: |
@@ -43,15 +71,47 @@
       vm.dirty_background_bytes = 16777216
       vm.dirty_bytes = 50331648
 
+- name: remove usb dirty memory sysctl limits when installed on ssd
+  when: sys_install_target == 'ssd'
+  file:
+    path: /etc/sysctl.d/99-usb-flush.conf
+    state: absent
+
 - name: blacklist uas kernel module to enforce stable usb-storage mode
+  when: sys_install_target == 'usb'
   copy:
     dest: /etc/modprobe.d/blacklist-uas.conf
     content: |
       # Force standard usb-storage BOT driver to prevent UAS controller hangs
       blacklist uas
 
-- name: journald write to /dev/tty1
-  copy: src=files/systemd-journald.conf dest=/etc/systemd/journald.conf
+- name: remove uas kernel module blacklist when installed on ssd
+  when: sys_install_target == 'ssd'
+  file:
+    path: /etc/modprobe.d/blacklist-uas.conf
+    state: absent
+
+- name: check if fstrim.timer unit exists
+  command: systemctl list-unit-files fstrim.timer
+  register: fstrim_timer_check
+  failed_when: false
+  changed_when: false
+
+- name: configure periodic SSD TRIM (enabled on ssd, disabled on usb)
+  when: "'fstrim.timer' in (fstrim_timer_check.stdout | default(''))"
+  systemd:
+    name: fstrim.timer
+    enabled: "{{ sys_install_target == 'ssd' }}"
+    state: "{{ omit if sys_install_target == 'ssd' else 'stopped' }}"
+
+- name: journald write to /dev/tty1 (volatile on usb, size-capped persistent on ssd)
+  template:
+    src: files/systemd-journald.conf.j2
+    dest: /etc/systemd/journald.conf
+    owner: root
+    group: root
+    mode: '0644'
+  notify: restart systemd-journald
 
 - name: systemd disable status messages on console
   copy: src=files/systemd-system.conf dest=/etc/systemd/system.conf
@@ -64,12 +124,24 @@
       APT::Periodic::Update-Package-Lists "0";
       APT::Periodic::Unattended-Upgrade "0";
 
+- name: build effective firefox policies (add DOMjudge bookmark if enabled and missing)
+  set_fact:
+    effective_firefox_policies: >-
+      {%- set base = firefox_default_policies | combine(firefox_policies) -%}
+      {%- set bookmarks = base.Bookmarks | default([]) -%}
+      {%- set has_dj = bookmarks | selectattr('Title', 'defined') | selectattr('Title', 'match', '(?i)^domjudge$') | list | length > 0 -%}
+      {%- if (domjudge_enabled | default(false)) and (judge_system_url | default('') | trim | length > 0) and (not has_dj) -%}
+        {{ base | combine({'Bookmarks': bookmarks + [{'Title': 'DOMjudge', 'URL': (judge_system_url | trim), 'Placement': 'toolbar'}]}) }}
+      {%- else -%}
+        {{ base }}
+      {%- endif -%}
+
 - name: Configure firefox policies (trust squid cert, homepage/bookmarks/etc)
   copy:
     dest: /usr/lib/firefox/distribution/policies.json
     content: |
       {
         "policies":
-        {{ firefox_default_policies|combine(firefox_policies)|to_nice_json }}
+        {{ effective_firefox_policies|to_nice_json }}
       }
 

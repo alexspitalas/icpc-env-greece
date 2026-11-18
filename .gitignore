@@ -8,3 +8,5 @@ files/eclipse*
 files/pycharm*
 files/idea*
 files/apache-netbeans*
+files/sublime-text*
+files/node_exporter*

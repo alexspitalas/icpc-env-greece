@@ -23,6 +23,9 @@ sleep 5
 # Reset the team(and any defaults)
 $UTILDIR/scripts/deleteUser.sh
 
+# Ensure firstboot setup runs on the distributed image
+rm -f $UTILDIR/setup-complete
+
 # reset the TEAM and SITE
 echo "default team" > $UTILDIR/TEAM
 echo "default site" > $UTILDIR/SITE
@@ -37,6 +40,11 @@ do
 done
 lpadmin -x ContestPrinter
 
+# Re-apply configured print server if set in /icpc/PRINT_*
+if [ -x "$UTILDIR/scripts/printing_configure" ]; then
+  "$UTILDIR/scripts/printing_configure"
+fi
+
 # Cleanup apt cache/unnecessary package
 apt-get autoremove --purge -y
 apt-get clean
@@ -50,6 +58,12 @@ ufw --force enable
 
 # Delete /etc/machine-id so the image generates a new one on boot
 echo "" > /etc/machine-id
+
+# Remove build-VM persistent journal logs (present when install_target == "ssd")
+if [ -d /var/log/journal ]; then
+  systemctl stop systemd-journald.socket systemd-journald.service 2>/dev/null || true
+  rm -rf /var/log/journal/*
+fi
 
 # make sure wireguard config is wiped so it can be generated for each system on boot
 #systemctl stop wg-setup

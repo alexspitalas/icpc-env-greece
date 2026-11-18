@@ -1,0 +1,7 @@
+#!/bin/sh
+# Used to perform a full reset (team account, setup state, and DOMjudge credentials) and reboot
+/icpc/scripts/full_reset.sh
+
+echo "Done. Rebooting..."
+sleep 3
+reboot now

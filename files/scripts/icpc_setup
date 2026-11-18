@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 from whiptail import Whiptail
 from pathlib import Path
+import json
 import urllib.request
 import csv
 from subprocess import PIPE, Popen, run, CalledProcessError
@@ -147,6 +148,162 @@ configuration = {}
 PAPERSIZE = "letter"  # or 'a4'
 
 
+def is_domjudge_enabled() -> bool:
+    return read_file("/icpc/DOMJUDGE_ENABLED", "false").lower() == "true"
+
+
+def read_domjudge_credentials():
+    creds_path = Path("/icpc/domjudge_credentials")
+    if not creds_path.exists():
+        return None, None
+    try:
+        data = json.loads(creds_path.read_text(encoding="utf-8"))
+        username = str(data.get("username", "")).strip()
+        password = str(data.get("password", ""))
+        if username and password:
+            return username, password
+    except Exception:
+        pass
+    return None, None
+
+
+def needs_domjudge_setup() -> bool:
+    if not is_domjudge_enabled():
+        return False
+    url = read_file("/icpc/JUDGE_SYSTEM_URL", "")
+    parsed = urlparse(url) if url else None
+    if not parsed or parsed.scheme not in ("http", "https") or not parsed.hostname:
+        return True
+    username, password = read_domjudge_credentials()
+    return not (username and password)
+
+
+def sync_domjudge_config(reload_squid: bool = False):
+    cmd = ["/icpc/scripts/domjudge_apply_creds"]
+    if reload_squid:
+        cmd.append("--reload-squid")
+    run(cmd, check=False)
+
+
+def sync_printing_config():
+    script = Path("/icpc/scripts/printing_configure")
+    if script.exists():
+        run([str(script)], check=False)
+
+
+def needs_print_team_prompt() -> bool:
+    if is_domjudge_enabled():
+        return False
+    mode = read_file("/icpc/PRINT_MODE", "local").lower()
+    if mode not in ("ipp", "cups", "http"):
+        return False
+    return len(read_file("/icpc/PRINT_TEAM", "")) == 0
+
+
+def configure_print_team(w: Whiptail, force: bool = False):
+    if is_domjudge_enabled():
+        return
+    mode = read_file("/icpc/PRINT_MODE", "local").lower()
+    if mode not in ("ipp", "cups", "http"):
+        return
+    existing = read_file("/icpc/PRINT_TEAM", "")
+    if existing and not force:
+        return
+
+    w.title = "ICPC Setup - Team Print Header"
+    while True:
+        entered, code = w.inputbox(
+            msg="Enter the team name to display on printed pages:",
+            default=existing,
+        )
+        entered = entered.strip()
+        if code == 0 and entered:
+            for fname in ("/icpc/PRINT_TEAM", "/icpc/TEAMNAME", "/icpc/TEAM"):
+                Path(fname).write_text(entered + "\n", encoding="utf-8")
+                os.chmod(fname, 0o644)
+            break
+        w.msgbox("Team name cannot be empty.")
+
+
+def configure_domjudge(w: Whiptail, force: bool = False):
+    if not is_domjudge_enabled():
+        return
+
+    url = read_file("/icpc/JUDGE_SYSTEM_URL", "")
+    parsed = urlparse(url) if url else None
+    url_valid = bool(parsed and parsed.scheme in ("http", "https") and parsed.hostname)
+    existing_user, existing_pass = read_domjudge_credentials()
+
+    if not force and url_valid and existing_user and existing_pass:
+        sync_domjudge_config(reload_squid=True)
+        return
+
+    if force and url_valid and existing_user and existing_pass:
+        w.title = "ICPC Setup - DOMjudge Configuration"
+        if w.yesno(
+            msg=f"DOMjudge credentials are already configured.\n\nURL: {url}\nTeam: {existing_user}\n\nKeep existing DOMjudge settings?",
+            default="yes",
+        ):
+            sync_domjudge_config(reload_squid=True)
+            return
+
+    w.title = "ICPC Setup - DOMjudge Configuration"
+    username = existing_user or ""
+    prompt_url = (not url_valid) or force
+    while True:
+        if prompt_url:
+            entered_url, code = w.inputbox(
+                msg="Enter the DOMjudge server URL (e.g. https://judge.example.com/):",
+                default=url,
+            )
+            entered_url = entered_url.strip()
+            p = urlparse(entered_url) if entered_url else None
+            if code != 0 or not p or p.scheme not in ("http", "https") or not p.hostname:
+                w.msgbox("Please enter a valid http:// or https:// DOMjudge URL.")
+                continue
+            url = entered_url
+            url_valid = True
+
+        entered_user, code = w.inputbox(
+            msg=f"DOMjudge URL: {url}\n\nEnter the DOMjudge team username:",
+            default=username,
+        )
+        entered_user = entered_user.strip()
+        if code != 0 or not entered_user:
+            w.msgbox("Team username cannot be empty.")
+            continue
+        username = entered_user
+
+        entered_pass, code = w.inputbox(
+            msg=f"Enter the DOMjudge password for team '{username}':",
+            password=True,
+        )
+        if code != 0 or not entered_pass:
+            w.msgbox("Team password cannot be empty.")
+            continue
+
+        if w.yesno(
+            msg=f"DOMjudge URL: {url}\nTeam Username: {username}\n\nSave these DOMjudge credentials?",
+            default="yes",
+        ):
+            password = entered_pass
+            break
+
+    Path("/icpc/JUDGE_SYSTEM_URL").write_text(url + "\n", encoding="utf-8")
+    os.chmod("/icpc/JUDGE_SYSTEM_URL", 0o644)
+
+    creds_path = Path("/icpc/domjudge_credentials")
+    creds_path.write_text(
+        json.dumps({"username": username, "password": password}) + "\n",
+        encoding="utf-8",
+    )
+    os.chmod(creds_path, 0o600)
+    os.chown(creds_path, 0, 0)
+    Path("/icpc/PRINT_TEAM").unlink(missing_ok=True)
+
+    sync_domjudge_config(reload_squid=True)
+
+
 def main():
 
     # This script must be run as root
@@ -155,15 +312,20 @@ def main():
         sys.exit(1)
 
     # Do some _really_ basic cli argument handling
-    force = True
+    force = False
     if len(sys.argv) > 1 and (sys.argv[1] == "-f" or sys.argv[1] == "--force"):
         force = True
     
     # Apply firewall rules first thing
     apply_firewall_rules()
+
+    # Keep DOMjudge and printing configuration synced if already present
+    if not needs_domjudge_setup():
+        sync_domjudge_config(reload_squid=True)
+    sync_printing_config()
     
     # Exit if the configuration has already been run and the force argument was not specified
-    if Path("/icpc/setup-complete").exists() and not force:
+    if Path("/icpc/setup-complete").exists() and not force and not needs_domjudge_setup() and not needs_print_team_prompt():
         print("Already configured. Run with -f or --force to reconfigure.")
         sys.exit(0)
 
@@ -240,6 +402,9 @@ def main():
 
     # Apply the configuration things previously specified
     apply_configuration()
+    configure_domjudge(w, force=force)
+    configure_print_team(w, force=force)
+    sync_printing_config()
     
     #Uncomment if we give team information on wallpaper
     #apply_wallpaper()
