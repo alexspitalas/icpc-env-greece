@@ -224,6 +224,17 @@ Contestant images can optionally run [Prometheus `node_exporter`](https://github
    ```
    Then add Prometheus as a data source in Grafana and import a Node Exporter dashboard (such as Grafana dashboard ID `1860`).
 
+### Active IDE & Window Statistics (`s.py`)
+The image includes `s.py` (installed at `/usr/local/bin/s.py` and `/icpc/scripts/s.py` by `playbooks/icpc.yml`), which inspects the currently focused X11 window on the contestant's desktop and prints a JSON snapshot to stdout containing:
+* `name` (`WM_NAME`), `window_class` (`WM_CLASS`), `window_role` (`WM_WINDOW_ROLE`), and `pid` (`_NET_WM_PID`)
+* `process`: the full process tree (`exe`, `cmdline`, `comm`, `pid`, and `children`) of the active window (allowing you to see both GUI IDEs like VS Code, CLion, IntelliJ, Eclipse, Code::Blocks, Geany, Sublime Text and terminal editors like `vim`/`nano` running inside `xfce4-terminal`)
+* `ts`: Unix timestamp
+
+To query a workstation remotely over SSH as `icpcadmin`:
+```bash
+ssh -i files/secrets/icpcadmin@contestmanager icpcadmin@<contestant-ip> "sudo /usr/local/bin/s.py"
+```
+
 
 ## Reset Contestant
 To reset a contestant all you need to do is to `log out` from the contestant user and **log in** to the `Clear Team Account`. When you log in the reset script will automaticly start and it will recreate the `Contestant user` and will reboot the system. Saved DOMjudge team credentials (`/icpc/domjudge_credentials`) are preserved across `Clear Team Account` resets.
