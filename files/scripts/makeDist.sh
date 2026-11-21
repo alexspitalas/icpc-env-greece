@@ -26,9 +26,12 @@ $UTILDIR/scripts/deleteUser.sh
 # Ensure firstboot setup runs on the distributed image
 rm -f $UTILDIR/setup-complete
 
-# reset the TEAM and SITE
-echo "default team" > $UTILDIR/TEAM
-echo "default site" > $UTILDIR/SITE
+# Clear legacy TEAM and SITE markers unless pre-configured via DOMjudge credentials
+if [ ! -s "$UTILDIR/domjudge_credentials" ]; then
+  rm -f "$UTILDIR"/TEAM* "$UTILDIR/SITE"
+else
+  rm -f "$UTILDIR/SITE"
+fi
 
 # Remove the team wallpaper
 rm -f $UTILDIR/teamWallpaper.png

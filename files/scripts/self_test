@@ -53,23 +53,17 @@ function check_service() {
 }
 
 echo "${BLUE}System Configuration${RESET}"
-print_check "Contest ID"
-CONTESTID="$(cat /icpc/CONTEST 2>/dev/null)"
-NOTEAM="${RED}Not Set${RESET}"
-CONTESTID="${CONTESTID:-$NOTEAM}"
-echo $CONTESTID
+CONTESTID="$(cat /icpc/DOMJUDGE_CONTEST /icpc/CONTEST 2>/dev/null | head -n1)"
+if [ -n "$CONTESTID" ] && [ "$CONTESTID" != "demo" ]; then
+  print_check "Contest ID"
+  echo "$CONTESTID"
+fi
 
-print_check "Team ID"
-TEAMNAME="$(cat /icpc/TEAM 2>/dev/null)"
-NOTEAM="${RED}Not Set${RESET}"
-TEAMNAME="${TEAMNAME:-$NOTEAM}"
-echo $TEAMNAME
-
-print_check "Site ID"
-SITENAME="$(cat /icpc/SITE 2>/dev/null)"
-NOSITE="${RED}Not Set${RESET}"
-SITENAME="${SITENAME:-$NOSITE}"
-echo $SITENAME
+TEAMNAME="$(cat /icpc/TEAM /icpc/PRINT_TEAM 2>/dev/null | head -n1)"
+if [ -n "$TEAMNAME" ] && [ "$TEAMNAME" != "default team" ] && [ "$TEAMNAME" != "demo team" ]; then
+  print_check "Team"
+  echo "$TEAMNAME"
+fi
 
 INSTALL_TARGET_VAL="$(cat /icpc/INSTALL_TARGET 2>/dev/null)"
 if [ -n "$INSTALL_TARGET_VAL" ]; then
@@ -82,6 +76,11 @@ if [ -n "$WIRELESS_ENABLED_VAL" ]; then
   print_check "Wireless (Wi-Fi) Support"
   if [ "$WIRELESS_ENABLED_VAL" = "true" ]; then
     echo "${GREEN}Enabled${RESET}"
+    ACTIVE_WIFI_SSID="$(nmcli -t -f active,ssid dev wifi 2>/dev/null | awk -F: '$1=="yes"{sub(/^[^:]+:/,""); print; exit}')"
+    if [ -n "$ACTIVE_WIFI_SSID" ]; then
+      print_check "    Active Wi-Fi SSID"
+      echo "$ACTIVE_WIFI_SSID"
+    fi
   else
     echo "Disabled (wired only)"
   fi
@@ -183,14 +182,20 @@ print_check "Checking if the firewall is enabled"
 ufw status 2>&1 | grep 'Status: active' >/dev/null
 check_return $?
 
-
 print_check "Making sure the squid proxy is running"
 check_service 'squid'
 
 if [ "$WIRELESS_ENABLED_VAL" = "true" ]; then
   print_check "Making sure NetworkManager is running"
   check_service 'NetworkManager'
+else
+  print_check "Making sure systemd-networkd is running"
+  check_service 'systemd-networkd'
 fi
+
+print_check "Checking active network route"
+ip -4 route show default 2>/dev/null | grep -q 'default' || ip -6 route show default 2>/dev/null | grep -q 'default'
+check_return $?
 
 if [ -f /etc/systemd/system/node_exporter.service ]; then
   print_check "Making sure node_exporter is running"
@@ -201,22 +206,52 @@ print_check "Testing access to google is blocked with a proxy error"
 curl -s --proxy http://127.0.0.1:3128 http://google.com 2>/dev/null | grep "<h1>Access Denied</h1>" > /dev/null
 check_return $?
 
-if [ -f /icpc/config_homepage ]; then
-  while IFS="" read -r url ; do
-    [ -z "$url" ] && continue
-    print_check "Testing access to $url is successful with proxy"
-    # wget -e use_proxy=yes -T 5 -t 1 -e http_proxy=127.0.0.1:3128 -e https_proxy=127.0.0.1:3128 -O- --no-check-certificate $url 2>/dev/null | grep -i "html" > /dev/null
-    curl --proxy http://127.0.0.1:3128 --connect-timeout 5 --max-time 10 --silent -o /dev/null --fail $url
-    check_return $?
-    break # only check one url from the list
-  done < /icpc/config_homepage
+if [ -s /icpc/JUDGE_SYSTEM_URL ]; then
+  DJURL="$(cat /icpc/JUDGE_SYSTEM_URL 2>/dev/null)"
+  if [ "$DOMJUDGE_ENABLED" = "true" ]; then
+    print_check "Testing access to DOMjudge ($DJURL) with proxy"
+  else
+    print_check "Testing access to Judge System ($DJURL) with proxy"
+  fi
+  HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" --connect-timeout 4 -m 6 -x http://127.0.0.1:3128 "$DJURL" 2>/dev/null || echo "000")
+  if [ "$HTTP_CODE" != "000" ] && [ "$HTTP_CODE" != "403" ] && [ "$HTTP_CODE" != "502" ] && [ "$HTTP_CODE" != "503" ] && [ "$HTTP_CODE" != "504" ]; then
+    print_ok
+  else
+    print_fail
+  fi
 fi
 
-if [ "$DOMJUDGE_ENABLED" = "true" ] && [ -s /icpc/JUDGE_SYSTEM_URL ]; then
-  DJURL="$(cat /icpc/JUDGE_SYSTEM_URL 2>/dev/null)"
-  print_check "Testing access to DOMjudge ($DJURL) with proxy"
-  curl --proxy http://127.0.0.1:3128 --connect-timeout 5 --max-time 10 --silent -L -o /dev/null --fail "$DJURL"
-  check_return $?
+# Replace legacy /icpc/config_homepage check with allowed domains from /etc/squid/acl_allowed_domains.txt
+if [ -f /etc/squid/acl_allowed_domains.txt ]; then
+  while IFS= read -r line; do
+    [[ "$line" =~ ^[[:space:]]*# ]] && continue
+    [[ -z "${line// }" ]] && continue
+    domain="${line#"."}"
+    domain="${domain// /}"
+    [ -z "$domain" ] && continue
+
+    if [ "$domain" = "grcpc.gr" ] || [ "$domain" = "150.140.142.30" ]; then
+      HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" --connect-timeout 4 -m 5 -x http://127.0.0.1:3128 "http://$domain:8050/" 2>/dev/null || echo "000")
+      target_display="http://$domain:8050"
+      if [ "$HTTP_CODE" = "000" ] || [ "$HTTP_CODE" = "403" ] || [ "$HTTP_CODE" = "502" ] || [ "$HTTP_CODE" = "503" ] || [ "$HTTP_CODE" = "504" ]; then
+        FALLBACK_CODE=$(curl -s -o /dev/null -w "%{http_code}" --connect-timeout 4 -m 5 -x http://127.0.0.1:3128 "http://$domain/" 2>/dev/null || echo "000")
+        if [ "$FALLBACK_CODE" != "000" ] && [ "$FALLBACK_CODE" != "403" ] && [ "$FALLBACK_CODE" != "502" ] && [ "$FALLBACK_CODE" != "503" ] && [ "$FALLBACK_CODE" != "504" ]; then
+          HTTP_CODE="$FALLBACK_CODE"
+          target_display="http://$domain"
+        fi
+      fi
+    else
+      target_display="http://$domain"
+      HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" --connect-timeout 4 -m 5 -x http://127.0.0.1:3128 "http://$domain/" 2>/dev/null || echo "000")
+    fi
+
+    print_check "Testing access to $target_display with proxy"
+    if [ "$HTTP_CODE" != "000" ] && [ "$HTTP_CODE" != "403" ] && [ "$HTTP_CODE" != "502" ] && [ "$HTTP_CODE" != "503" ] && [ "$HTTP_CODE" != "504" ]; then
+      print_ok
+    else
+      print_fail
+    fi
+  done < /etc/squid/acl_allowed_domains.txt
 fi
 
 print_check "Testing direct internet access is disabled"
@@ -227,15 +262,11 @@ else
   print_ok
 fi
 
-#if [ -f /usr/local/bin/wg_setup ]; then
-#  print_check "Checking if the management VPN is alive"
-#  ping -c1 contestmanager.icpcnet.internal >/dev/null 2>&1
-#  check_return $?
-#fi
-
 echo
 echo "${BLUE}Compiler Versions${RESET}"
-ERLANG_VERSION_OUT=$(erl -eval '{ok, Version} = file:read_file(filename:join([code:root_dir(), "releases", erlang:system_info(otp_release), "OTP_VERSION"])), io:fwrite(Version), halt().' -noshell 2>/dev/null)
+if language_supported "erlang"; then
+  ERLANG_VERSION_OUT=$(erl -eval '{ok, Version} = file:read_file(filename:join([code:root_dir(), "releases", erlang:system_info(otp_release), "OTP_VERSION"])), io:fwrite(Version), halt().' -noshell 2>/dev/null)
+fi
 print_version       "ada"       "gnat --version"
 print_version       "c"         "gcc --version"
 print_version       "cpp"       "g++ --version" "c++"
@@ -269,5 +300,5 @@ print_version       "scala"     "scala -version"
 echo
 echo "${BLUE}Image Details${RESET}"
 VERSIONINFO=$(cat /icpc/version 2>/dev/null)
-VERSIONDEFAULT="${RED}No version info found!${DEFAULT}"
+VERSIONDEFAULT="${RED}No version info found!${RESET}"
 echo -e "${VERSIONINFO:-$VERSIONDEFAULT}"

@@ -127,13 +127,12 @@
         path: /etc/NetworkManager/system-connections/icpc-wifi.nmconnection
         state: absent
 
+    # Do not override owner/group/mode on /etc/polkit-1/rules.d so Ubuntu's
+    # default root:polkitd (0750) package permissions are preserved.
     - name: ensure polkit rules.d directory exists
       file:
         path: /etc/polkit-1/rules.d
         state: directory
-        owner: root
-        group: root
-        mode: '0755'
 
     - name: install NetworkManager polkit policy (contestant manage={{ wireless_contestant_manage | default(false) | bool }})
       template:
