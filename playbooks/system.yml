@@ -13,9 +13,6 @@
       - curl        # debugging connection things
       - ncdu
       - jq
-      # Needed for wifi
-      - wpasupplicant
-      - iw
 
 - name: disable udev persistent net generator
   file: state=link name=/etc/udev/rules.d/75-persistent-net-generator.rules src=/dev/null
@@ -23,9 +20,6 @@
 # https://www.freedesktop.org/wiki/Software/systemd/PredictableNetworkInterfaceNames/
 - name: disable "predictable network interface names"
   file: state=link name=/etc/udev/rules.d/80-net-setup-link.rules src=/dev/null
-
-- name: push a better default network interfaces file
-  copy: src=files/01-netcfg.yaml dest=/etc/netplan/01-netcfg.yaml
 
 - name: resolve and validate effective install target
   set_fact:

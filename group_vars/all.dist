@@ -31,6 +31,29 @@ icpcadmin_ssh_keys: []
 #           do not need the 192MB FAT32 ICPC transfer partition.
 install_target: "usb"
 
+# ===== Wireless (Wi-Fi) Configuration =====
+# Set to true when installing on laptops or machines that require Wi-Fi connectivity.
+# When false (default), wireless packages (NetworkManager, nm-applet, wpasupplicant, iw)
+# are not installed and networking remains wired-only via systemd-networkd.
+wireless_enabled: false
+
+# When wireless_enabled is true, controls whether the 'contestant' user can connect to,
+# disconnect from, or switch Wi-Fi networks via the desktop tray applet / NetworkManager.
+#   true  : Both 'contestant' and 'icpcadmin' can manage Wi-Fi (UFW + Squid still enforce
+#           allowed_domains on all traffic).
+#   false : Only 'icpcadmin' (and root) can configure or switch Wi-Fi networks;
+#           'contestant' is denied by Polkit and cannot change networks.
+wireless_contestant_manage: false
+
+# Optional: Pre-configured Wi-Fi network to auto-connect on boot (system-wide connection,
+# connects before login). Leave wireless_ssid empty ("") to configure Wi-Fi manually on
+# each laptop via the XFCE network tray icon or nmcli.
+wireless_ssid: ""
+# Leave empty ("") for an open (unencrypted) network, or set the WPA/WPA2-PSK passphrase.
+wireless_password: ""
+# Set to true if the pre-configured SSID is hidden (not broadcast).
+wireless_hidden: false
+
 #The auth token that is used to allow traffic to the server
 auth_token: "1234"
 # Domains (and their subdomains) that squid sends "Authorization: Bearer <auth_token>" to

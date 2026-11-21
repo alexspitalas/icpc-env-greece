@@ -1,0 +1,39 @@
+// Managed by Ansible (playbooks/wireless.yml)
+// Controls which users are allowed to manage NetworkManager / Wi-Fi connections.
+polkit.addRule(function(action, subject) {
+    if (action.id.indexOf("org.freedesktop.NetworkManager.") !== 0) {
+        return;
+    }
+
+    // Allow local admins (icpcadmin / sudo group) without password prompts.
+    if (subject.user === "icpcadmin" || subject.isInGroup("sudo")) {
+        return polkit.Result.YES;
+    }
+
+    // Never allow passwordless greeter reset accounts to modify networking.
+    if (subject.user === "teamreset" || subject.user === "fullreset") {
+        return polkit.Result.NO;
+    }
+
+    if (subject.user === "contestant") {
+{% if wireless_contestant_manage | default(false) | bool %}
+        // Contestants may connect/switch Wi-Fi and toggle networking,
+        // while keeping hostname changes and Wi-Fi sharing denied.
+        var allowed = {
+            "org.freedesktop.NetworkManager.network-control": true,
+            "org.freedesktop.NetworkManager.enable-disable-network": true,
+            "org.freedesktop.NetworkManager.enable-disable-wifi": true,
+            "org.freedesktop.NetworkManager.wifi.scan": true,
+            "org.freedesktop.NetworkManager.settings.modify.system": true,
+            "org.freedesktop.NetworkManager.settings.modify.own": true
+        };
+        if (allowed[action.id]) {
+            return polkit.Result.YES;
+        }
+        return polkit.Result.NO;
+{% else %}
+        // Only icpcadmin / root may configure or switch Wi-Fi networks.
+        return polkit.Result.NO;
+{% endif %}
+    }
+});

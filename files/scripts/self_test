@@ -77,6 +77,16 @@ if [ -n "$INSTALL_TARGET_VAL" ]; then
   echo "$INSTALL_TARGET_VAL"
 fi
 
+WIRELESS_ENABLED_VAL="$(cat /icpc/WIRELESS_ENABLED 2>/dev/null)"
+if [ -n "$WIRELESS_ENABLED_VAL" ]; then
+  print_check "Wireless (Wi-Fi) Support"
+  if [ "$WIRELESS_ENABLED_VAL" = "true" ]; then
+    echo "${GREEN}Enabled${RESET}"
+  else
+    echo "Disabled (wired only)"
+  fi
+fi
+
 # check DOMjudge configuration if enabled or autologin urls are defined
 DOMJUDGE_ENABLED=$(cat /icpc/DOMJUDGE_ENABLED 2>/dev/null)
 if [ "$DOMJUDGE_ENABLED" = "true" ] || grep -q 'acl autologin url_regex' /etc/squid/squid.conf ; then
@@ -176,6 +186,11 @@ check_return $?
 
 print_check "Making sure the squid proxy is running"
 check_service 'squid'
+
+if [ "$WIRELESS_ENABLED_VAL" = "true" ]; then
+  print_check "Making sure NetworkManager is running"
+  check_service 'NetworkManager'
+fi
 
 if [ -f /etc/systemd/system/node_exporter.service ]; then
   print_check "Making sure node_exporter is running"

@@ -199,6 +199,22 @@ In the final image, SSH password authentication is disabled and `imageadmin` is 
   This connects as `icpcadmin` on the active port (5222 or 2222).
 * You can add custom public keys to `group_vars/all` under `icpcadmin_ssh_keys` prior to building.
 
+### Wireless (Wi-Fi) Support for Laptops
+For laptop installations, optional Wi-Fi support can be enabled via `group_vars/all` (`playbooks/wireless.yml`, see `group_vars/all.dist` for defaults):
+
+```yaml
+wireless_enabled: true
+# Allow 'contestant' to connect/switch Wi-Fi (false = only 'icpcadmin' / root)
+wireless_contestant_manage: false
+# Optional: pre-configured SSID to auto-connect at boot before login
+wireless_ssid: ""
+wireless_password: ""
+wireless_hidden: false
+```
+
+* When `wireless_enabled: false` (default), wireless packages (`network-manager`, `network-manager-gnome`, `wpasupplicant`, `iw`) are omitted and networking stays wired-only via `systemd-networkd`.
+* When `wireless_enabled: true`, Netplan switches to `NetworkManager` (supporting both wired Ethernet and Wi-Fi), installs `nm-applet` in the XFCE panel tray, enforces `wireless_contestant_manage` via Polkit (`/etc/polkit-1/rules.d/50-icpc-networkmanager.rules`), and optionally writes a system-wide `/etc/NetworkManager/system-connections/icpc-wifi.nmconnection` profile when `wireless_ssid` is set. All contestant traffic remains filtered by UFW and Squid (`allowed_domains`).
+
 ### Monitoring (Prometheus node_exporter & Grafana)
 Contestant images can optionally run [Prometheus `node_exporter`](https://github.com/prometheus/node_exporter) (`playbooks/monitoring.yml`) for host monitoring in Prometheus and Grafana.
 
