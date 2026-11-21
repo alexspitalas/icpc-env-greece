@@ -148,7 +148,7 @@ install_target: "ssd"
 
 ### 3. First Boot
 1. On first boot from the cloned SSD, `systemd` generates a unique `/etc/machine-id` for that workstation.
-2. `firstboot.service` switches to `tty2` and launches `/icpc/scripts/icpc_setup` before the desktop starts:
+2. `firstboot.service` switches to `tty8` and launches `/icpc/scripts/icpc_setup` before the desktop starts:
    * Prompts for any unconfigured runtime settings (such as DOMjudge URL/team credentials when `domjudge_enabled: true` and credentials aren't pre-filled, or the print team name when needed).
    * Runs `/icpc/scripts/self_test` (showing `Install Target: ssd` along with system, network, proxy, and compiler checks) and waits for `[Enter]`.
    * Writes `/icpc/setup-complete` and starts LightDM into the `contestant` desktop session.

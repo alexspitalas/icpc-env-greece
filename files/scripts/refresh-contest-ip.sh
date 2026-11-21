@@ -57,12 +57,15 @@ for domain in "${DOMAINS[@]}"; do
     IP=$(getent ahosts "$domain" 2>/dev/null | awk '/STREAM/ { print $1 }' | head -n 1)
     
     # Choose port: 8050 for contest servers (grcpc.gr or local contest IP), standard 80/443 for others
+    # Note: with -w, curl already prints 000 on failure, so don't append `|| echo 000` (that yields "000000").
     if [ "$domain" = "grcpc.gr" ] || [ "$domain" = "150.140.142.30" ]; then
         # Try port 8050 first, fallback to 80
-        HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" -m 4 -x http://127.0.0.1:3128 "http://$domain:8050/" 2>/dev/null || echo "000")
+        HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" -m 4 -x http://127.0.0.1:3128 "http://$domain:8050/" 2>/dev/null)
+        HTTP_CODE="${HTTP_CODE:-000}"
         target_display="$domain:8050"
         if [ "$HTTP_CODE" = "000" ] || [ "$HTTP_CODE" = "502" ] || [ "$HTTP_CODE" = "503" ] || [ "$HTTP_CODE" = "504" ]; then
-            FALLBACK_CODE=$(curl -s -o /dev/null -w "%{http_code}" -m 4 -x http://127.0.0.1:3128 "http://$domain/" 2>/dev/null || echo "000")
+            FALLBACK_CODE=$(curl -s -o /dev/null -w "%{http_code}" -m 4 -x http://127.0.0.1:3128 "http://$domain/" 2>/dev/null)
+            FALLBACK_CODE="${FALLBACK_CODE:-000}"
             if [ "$FALLBACK_CODE" != "000" ] && [ "$FALLBACK_CODE" != "502" ] && [ "$FALLBACK_CODE" != "503" ] && [ "$FALLBACK_CODE" != "504" ]; then
                 HTTP_CODE="$FALLBACK_CODE"
                 target_display="$domain:80"
@@ -70,7 +73,8 @@ for domain in "${DOMAINS[@]}"; do
         fi
     else
         target_display="$domain"
-        HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" -m 4 -x http://127.0.0.1:3128 "http://$domain/" 2>/dev/null || echo "000")
+        HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" -m 4 -x http://127.0.0.1:3128 "http://$domain/" 2>/dev/null)
+        HTTP_CODE="${HTTP_CODE:-000}"
     fi
 
     ip_info="${IP:-no IP}"

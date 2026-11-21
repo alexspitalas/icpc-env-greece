@@ -1,10 +1,12 @@
 [Unit]
 Description=Warm up file system cache
+After=firstboot.service
 
 [Service]
 Type=oneshot
+StandardOutput=null
 ExecStart=/usr/bin/ionice -c 3 /usr/bin/nice -n 19 /usr/bin/find / -path /proc -prune -o -path /sys -prune -o -print
 ExecStart=/usr/bin/ionice -c 3 /usr/bin/nice -n 19 /icpc/scripts/vmtouch.sh
 
 [Install]
-WantedBy=multi-user.target
+WantedBy=graphical.target

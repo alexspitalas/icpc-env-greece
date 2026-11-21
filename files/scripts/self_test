@@ -182,6 +182,13 @@ print_check "Checking if the firewall is enabled"
 ufw status 2>&1 | grep 'Status: active' >/dev/null
 check_return $?
 
+# On first boot squid may still be starting; give it a few seconds before testing through it
+if ! systemctl is-active --quiet squid; then
+  for _ in 1 2 3 4 5 6 7 8 9 10; do
+    sleep 1
+    systemctl is-active --quiet squid && break
+  done
+fi
 print_check "Making sure the squid proxy is running"
 check_service 'squid'
 
@@ -203,59 +210,90 @@ if [ -f /etc/systemd/system/node_exporter.service ]; then
 fi
 
 print_check "Testing access to google is blocked with a proxy error"
-curl -s --proxy http://127.0.0.1:3128 http://google.com 2>/dev/null | grep "<h1>Access Denied</h1>" > /dev/null
+curl -s -m 8 --proxy http://127.0.0.1:3128 http://google.com 2>/dev/null | grep "<h1>Access Denied</h1>" > /dev/null
 check_return $?
+
+# --- Reachability of the judge system and allowed domains through squid ---
+# All checks run in parallel, so the total wait is bounded by a single curl timeout
+# instead of adding up one timeout per (unreachable) site.
+
+# Prints the HTTP status code (000 on failure). Note: with -w, curl already prints 000
+# itself on failure, so do NOT append `|| echo 000` (that would yield "000000").
+proxy_http_code() {
+  local code
+  code=$(curl -s -o /dev/null -w "%{http_code}" --connect-timeout 4 -m 6 -x http://127.0.0.1:3128 "$1" 2>/dev/null)
+  echo "${code:-000}"
+}
+http_ok() {
+  case "$1" in
+    ""|000|403|502|503|504) return 1 ;;
+    *) return 0 ;;
+  esac
+}
+# $1 = result file, $2 = label, $3 = url
+check_url_to_file() {
+  printf '%s\n%s\n' "$2" "$(proxy_http_code "$3")" > "$1"
+}
+# $1 = result file, $2 = domain (contest servers: try :8050 first, then fall back to :80)
+check_domain_to_file() {
+  local domain="$2" display code fallback
+  if [ "$domain" = "grcpc.gr" ] || [ "$domain" = "150.140.142.30" ]; then
+    display="http://$domain:8050"
+    code=$(proxy_http_code "$display/")
+    if ! http_ok "$code"; then
+      fallback=$(proxy_http_code "http://$domain/")
+      if http_ok "$fallback"; then
+        code="$fallback"
+        display="http://$domain"
+      fi
+    fi
+  else
+    display="http://$domain"
+    code=$(proxy_http_code "$display/")
+  fi
+  printf '%s\n%s\n' "Testing access to $display with proxy" "$code" > "$1"
+}
+
+CONN_TMP=$(mktemp -d)
+CONN_COUNT=0
 
 if [ -s /icpc/JUDGE_SYSTEM_URL ]; then
   DJURL="$(cat /icpc/JUDGE_SYSTEM_URL 2>/dev/null)"
   if [ "$DOMJUDGE_ENABLED" = "true" ]; then
-    print_check "Testing access to DOMjudge ($DJURL) with proxy"
+    DJLABEL="Testing access to DOMjudge ($DJURL) with proxy"
   else
-    print_check "Testing access to Judge System ($DJURL) with proxy"
+    DJLABEL="Testing access to Judge System ($DJURL) with proxy"
   fi
-  HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" --connect-timeout 4 -m 6 -x http://127.0.0.1:3128 "$DJURL" 2>/dev/null || echo "000")
-  if [ "$HTTP_CODE" != "000" ] && [ "$HTTP_CODE" != "403" ] && [ "$HTTP_CODE" != "502" ] && [ "$HTTP_CODE" != "503" ] && [ "$HTTP_CODE" != "504" ]; then
+  check_url_to_file "$CONN_TMP/$CONN_COUNT" "$DJLABEL" "$DJURL" &
+  CONN_COUNT=$((CONN_COUNT + 1))
+fi
+
+if [ -f /etc/squid/acl_allowed_domains.txt ]; then
+  while IFS= read -r line; do
+    domain="$(printf '%s' "${line%%#*}" | tr -d '[:space:]')"
+    domain="${domain#.}"
+    [ -z "$domain" ] && continue
+    check_domain_to_file "$CONN_TMP/$CONN_COUNT" "$domain" &
+    CONN_COUNT=$((CONN_COUNT + 1))
+  done < /etc/squid/acl_allowed_domains.txt
+fi
+
+wait
+
+for ((i = 0; i < CONN_COUNT; i++)); do
+  [ -f "$CONN_TMP/$i" ] || continue
+  { IFS= read -r label; IFS= read -r code; } < "$CONN_TMP/$i"
+  print_check "$label"
+  if http_ok "$code"; then
     print_ok
   else
     print_fail
   fi
-fi
-
-# Replace legacy /icpc/config_homepage check with allowed domains from /etc/squid/acl_allowed_domains.txt
-if [ -f /etc/squid/acl_allowed_domains.txt ]; then
-  while IFS= read -r line; do
-    [[ "$line" =~ ^[[:space:]]*# ]] && continue
-    [[ -z "${line// }" ]] && continue
-    domain="${line#"."}"
-    domain="${domain// /}"
-    [ -z "$domain" ] && continue
-
-    if [ "$domain" = "grcpc.gr" ] || [ "$domain" = "150.140.142.30" ]; then
-      HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" --connect-timeout 4 -m 5 -x http://127.0.0.1:3128 "http://$domain:8050/" 2>/dev/null || echo "000")
-      target_display="http://$domain:8050"
-      if [ "$HTTP_CODE" = "000" ] || [ "$HTTP_CODE" = "403" ] || [ "$HTTP_CODE" = "502" ] || [ "$HTTP_CODE" = "503" ] || [ "$HTTP_CODE" = "504" ]; then
-        FALLBACK_CODE=$(curl -s -o /dev/null -w "%{http_code}" --connect-timeout 4 -m 5 -x http://127.0.0.1:3128 "http://$domain/" 2>/dev/null || echo "000")
-        if [ "$FALLBACK_CODE" != "000" ] && [ "$FALLBACK_CODE" != "403" ] && [ "$FALLBACK_CODE" != "502" ] && [ "$FALLBACK_CODE" != "503" ] && [ "$FALLBACK_CODE" != "504" ]; then
-          HTTP_CODE="$FALLBACK_CODE"
-          target_display="http://$domain"
-        fi
-      fi
-    else
-      target_display="http://$domain"
-      HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" --connect-timeout 4 -m 5 -x http://127.0.0.1:3128 "http://$domain/" 2>/dev/null || echo "000")
-    fi
-
-    print_check "Testing access to $target_display with proxy"
-    if [ "$HTTP_CODE" != "000" ] && [ "$HTTP_CODE" != "403" ] && [ "$HTTP_CODE" != "502" ] && [ "$HTTP_CODE" != "503" ] && [ "$HTTP_CODE" != "504" ]; then
-      print_ok
-    else
-      print_fail
-    fi
-  done < /etc/squid/acl_allowed_domains.txt
-fi
+done
+rm -rf "$CONN_TMP"
 
 print_check "Testing direct internet access is disabled"
-su - contestant -c 'curl --noproxy "*" --connect-timeout 5 --max-time 10 --silent --fail -o /dev/null http://google.com' 2>/dev/null
+su - contestant -c 'curl --noproxy "*" --connect-timeout 3 --max-time 5 --silent --fail -o /dev/null http://google.com' 2>/dev/null
 if [ $? -eq 0 ]; then
   print_fail
 else

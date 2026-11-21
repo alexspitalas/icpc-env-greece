@@ -193,7 +193,6 @@ class Whiptail:
 			cmd.extend(list(extra_args))
 
 		cmd.extend([
-			*list(extra_args),
 			f"--{control}",
 			"--",
 			str(msg),

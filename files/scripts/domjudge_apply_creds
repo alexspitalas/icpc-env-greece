@@ -18,31 +18,46 @@ import os
 from pathlib import Path
 import pwd
 import shlex
+import socket
 import subprocess
+import threading
+import time
 from urllib.parse import urlparse
 
 
-def resolve_domjudge_team_name(domjudge_url: str, username: str, password: str) -> str:
-    """Best-effort lookup of team display name via DOMjudge /api/user; falls back to username."""
-    try:
-        import requests
+def resolve_domjudge_team_name(domjudge_url: str, username: str, password: str, deadline: float = 3.0) -> str:
+    """Best-effort lookup of team display name via DOMjudge /api/user; falls back to username.
 
-        api_url = domjudge_url.rstrip("/") + "/api/user"
-        resp = requests.get(api_url, auth=(username, password), timeout=2)
-        if resp.status_code == 200:
-            info = resp.json()
-            if isinstance(info, dict):
-                for key in ("team", "name", "username"):
-                    raw = info.get(key)
-                    if isinstance(raw, dict):
-                        raw = raw.get("display_name") or raw.get("name")
-                    if isinstance(raw, str):
-                        val = raw.strip()
-                        if val:
-                            return val
-    except Exception:
-        pass
-    return username
+    The request runs in a daemon thread with a hard deadline: requests' timeout does not
+    cover DNS resolution, which can otherwise block for 10-20+ seconds when DNS is unreachable.
+    """
+    result = {}
+
+    def worker():
+        try:
+            import requests
+
+            api_url = domjudge_url.rstrip("/") + "/api/user"
+            resp = requests.get(api_url, auth=(username, password), timeout=2)
+            if resp.status_code == 200:
+                info = resp.json()
+                if isinstance(info, dict):
+                    for key in ("team", "name", "username"):
+                        raw = info.get(key)
+                        if isinstance(raw, dict):
+                            raw = raw.get("display_name") or raw.get("name")
+                        if isinstance(raw, str):
+                            val = raw.strip()
+                            if val:
+                                result["name"] = val
+                                return
+        except Exception:
+            pass
+
+    t = threading.Thread(target=worker, daemon=True)
+    t.start()
+    t.join(deadline)
+    return result.get("name") or username
 
 
 def read_text_stripped(path: Path) -> str:
@@ -249,7 +264,24 @@ def main():
     if args.reload_squid and squid_changed:
         res = subprocess.run(["systemctl", "is-active", "--quiet", "squid"], check=False)
         if res.returncode == 0:
-            subprocess.run(["systemctl", "restart", "squid"], check=False)
+            reconf = subprocess.run(
+                ["squid", "-k", "reconfigure"],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                check=False,
+            )
+            if reconf.returncode != 0:
+                subprocess.run(["systemctl", "restart", "squid"], check=False)
+            else:
+                # Wait briefly so squid finishes reloading before callers (e.g. self_test) connect
+                deadline = time.monotonic() + 3.0
+                time.sleep(0.2)
+                while time.monotonic() < deadline:
+                    try:
+                        with socket.create_connection(("127.0.0.1", 3128), timeout=0.5):
+                            break
+                    except OSError:
+                        time.sleep(0.2)
 
 
 if __name__ == "__main__":

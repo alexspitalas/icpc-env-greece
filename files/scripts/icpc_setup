@@ -2,12 +2,12 @@
 from whiptail import Whiptail
 from pathlib import Path
 import json
-from subprocess import PIPE, Popen, run
-import re
-import time
+import shutil
+from subprocess import PIPE, Popen, run, TimeoutExpired
 import sys
 import signal
 import os
+import time
 from urllib.parse import urlparse
 
 # Trap SIGHUP because systemd sends it and we don't want it to interrupt us
@@ -25,25 +25,29 @@ def read_file(path, default):
     return default
 
 
-def run_cmd(cmd, ignore_errors=False):
-    p = Popen(cmd, stdout=PIPE, stderr=PIPE)
-    out, err = p.communicate()
+def run_quiet(cmd, timeout=None):
+    """Run a command without a shell, capturing output, never raising on failure/timeout."""
+    try:
+        return run(cmd, stdout=PIPE, stderr=PIPE, text=True, check=False, timeout=timeout)
+    except (FileNotFoundError, TimeoutExpired):
+        return None
 
-    if p.returncode != 0 and not ignore_errors:
-        w = Whiptail("Command Error")
-        w.msgbox(
-            f"""Command: {cmd}
-Code: {p.returncode}
-Out:
-{out}
 
-Err:
-{err}
-"""
-        )
+def infobox(w: Whiptail, msg: str):
+    """Show a non-blocking status message so the screen is never blank while work is running."""
+    Popen(
+        ["whiptail", "--title", w.title, "--backtitle", w.backtitle, "--infobox", msg, "8", "70"],
+        stderr=PIPE,
+    ).communicate()
 
-    return (p.returncode, out, err)
 
+def set_network_backtitle(w: Whiptail, online: bool):
+    w.backtitle = f"Network status: {'online' if online else 'offline'}"
+
+
+# ----------------------------------------------------------------------------
+# Network / Wi-Fi helpers
+# ----------------------------------------------------------------------------
 
 def is_wireless_enabled() -> bool:
     return read_file("/icpc/WIRELESS_ENABLED", "false").lower() == "true"
@@ -52,148 +56,148 @@ def is_wireless_enabled() -> bool:
 def wifi_interfaces():
     if not is_wireless_enabled():
         return []
-
     interfaces = []
     net_dir = Path("/sys/class/net")
     if net_dir.exists():
         for iface_dir in sorted(net_dir.iterdir()):
             if (iface_dir / "wireless").exists() or (iface_dir / "phy80211").exists():
                 interfaces.append(iface_dir.name)
-    if interfaces:
-        return interfaces
-
-    try:
-        if_re = re.compile(r".+Interface (?P<name>.+)$")
-        (ret, out, err) = run_cmd(["iw", "dev"], ignore_errors=True)
-        for l in filter(lambda x: "Interface" in x, out.decode("UTF-8", errors="ignore").splitlines()):
-            m = if_re.match(l)
-            if m:
-                interfaces.append(m.group("name"))
-    except FileNotFoundError:
-        pass
-
     return interfaces
 
 
-def wifi_scan(interface):
-    run(["rfkill", "unblock", "wifi"], stdout=PIPE, stderr=PIPE, check=False)
-    run(["nmcli", "radio", "wifi", "on"], stdout=PIPE, stderr=PIPE, check=False)
-    run(["ip", "link", "set", "dev", interface, "up"], stdout=PIPE, stderr=PIPE, check=False)
+def check_network() -> bool:
+    """Instant, local-only check: does the machine have a default route (i.e. DHCP succeeded)?
 
-    ssids = []
-    seen = set()
-
-    # Prefer NetworkManager scan when available
-    res = run(
-        ["nmcli", "-t", "-f", "SSID", "dev", "wifi", "list", "--rescan", "yes", "ifname", interface],
-        stdout=PIPE,
-        stderr=PIPE,
-        text=True,
-        check=False,
-    )
-    if res.returncode == 0:
-        for line in res.stdout.splitlines():
-            ssid = line.strip()
-            if ssid and ssid not in seen:
-                seen.add(ssid)
-                ssids.append(ssid)
-
-    if not ssids:
-        try:
-            (ret, out, err) = run_cmd(["iw", interface, "scan"], ignore_errors=True)
-            ssid_re = re.compile(r"^SSID: (?P<ssid>.+)$")
-            for l in filter(lambda x: "SSID:" in x, out.decode("UTF-8", errors="ignore").splitlines()):
-                m = ssid_re.match(l.strip())
-                if m is not None:
-                    ssid = m.group("ssid").strip()
-                    if ssid and ssid not in seen:
-                        seen.add(ssid)
-                        ssids.append(ssid)
-        except FileNotFoundError:
-            pass
-
-    return ssids
-
-
-def get_allowed_test_urls():
-    urls = []
-    judge_url = read_file("/icpc/JUDGE_SYSTEM_URL", "")
-    if judge_url:
-        urls.append(judge_url)
-
-    acl_path = Path("/etc/squid/acl_allowed_domains.txt")
-    if acl_path.exists():
-        try:
-            for line in acl_path.read_text(encoding="utf-8").splitlines():
-                line = line.split("#", 1)[0].strip()
-                if not line:
-                    continue
-                domain = line.lstrip(".").strip()
-                if not domain:
-                    continue
-                if domain in ("grcpc.gr", "150.140.142.30"):
-                    urls.append(f"http://{domain}:8050/")
-                urls.append(f"http://{domain}/")
-        except OSError:
-            pass
-    return urls
-
-
-def check_network():
-    gw_ip = None
-    has_default_route = False
+    Deliberately makes no HTTP requests or pings: end-to-end reachability of the contest
+    sites through Squid is verified (in parallel) by /icpc/scripts/self_test instead.
+    """
     for family in ("-4", "-6"):
-        res = run(["ip", family, "route", "show", "default"], stdout=PIPE, stderr=PIPE, text=True, check=False)
-        if res.returncode == 0 and res.stdout.strip():
-            has_default_route = True
-            if family == "-4" and not gw_ip:
-                parts = res.stdout.strip().split()
-                if "via" in parts:
-                    idx = parts.index("via")
-                    if idx + 1 < len(parts):
-                        gw_ip = parts[idx + 1]
-
-    if not has_default_route:
-        return False
-
-    # 1. Verify reachability to Judge System URL or allowed domains through Squid (or directly if Squid isn't up yet)
-    for url in get_allowed_test_urls()[:4]:
-        res = run(
-            [
-                "curl",
-                "-s",
-                "-o",
-                "/dev/null",
-                "-w",
-                "%{http_code}",
-                "--connect-timeout",
-                "2",
-                "-m",
-                "3",
-                "-x",
-                "http://127.0.0.1:3128",
-                url,
-            ],
-            stdout=PIPE,
-            stderr=PIPE,
-            text=True,
-            check=False,
-        )
-        code = (res.stdout or "").strip()
-        if code and code not in ("000", "403", "502", "503", "504"):
+        res = run_quiet(["ip", family, "route", "show", "default"], timeout=3)
+        if res is not None and res.returncode == 0 and res.stdout.strip():
             return True
-
-    # 2. Fallback for isolated LANs without external internet: ping or ARP-check default gateway
-    if gw_ip:
-        res = run(["ping", "-c", "1", "-W", "1", gw_ip], stdout=PIPE, stderr=PIPE, check=False)
-        if res.returncode == 0:
-            return True
-        neigh = run(["ip", "neigh", "show", gw_ip], stdout=PIPE, stderr=PIPE, text=True, check=False)
-        if neigh.returncode == 0 and "lladdr" in (neigh.stdout or ""):
-            return True
-
     return False
 
+
+def wait_for_network_manager(timeout: int = 15):
+    """Event-driven wait (no polling) until NetworkManager finished activating saved connections."""
+    if shutil.which("nm-online"):
+        run_quiet(["nm-online", "-s", "-q", "-t", str(timeout)], timeout=timeout + 5)
+
+
+def wifi_scan(interface):
+    """Return [(ssid, signal_percent)] sorted by signal strength (strongest first)."""
+    run_quiet(["rfkill", "unblock", "wifi"], timeout=5)
+    run_quiet(["nmcli", "radio", "wifi", "on"], timeout=5)
+
+    base = ["nmcli", "-t", "--escape", "no", "-f", "SIGNAL,SSID", "dev", "wifi", "list"]
+    res = run_quiet(base + ["--rescan", "yes", "ifname", interface], timeout=30)
+    if res is None or res.returncode != 0 or not res.stdout.strip():
+        # NetworkManager may reject back-to-back rescans or still be initializing; fall back to cached/auto
+        time.sleep(1)
+        res = run_quiet(base + ["--rescan", "auto", "ifname", interface], timeout=30)
+
+    best = {}
+    if res is not None and res.returncode == 0:
+        for line in res.stdout.splitlines():
+            # SIGNAL comes first so SSIDs containing ':' are still parsed correctly
+            sig, _, ssid = line.partition(":")
+            ssid = ssid.strip()
+            if not ssid:
+                continue  # hidden network; use "[Enter Hidden / Custom SSID]"
+            try:
+                sig_val = int(sig)
+            except ValueError:
+                sig_val = 0
+            best[ssid] = max(sig_val, best.get(ssid, 0))
+
+    return sorted(best.items(), key=lambda kv: kv[1], reverse=True)
+
+
+def apply_wifi(w: Whiptail, interface, ssid, password, hidden=False):
+    infobox(w, f"Connecting to Wi-Fi network '{ssid}'...\n\nThis can take up to 30 seconds.")
+    # --wait caps how long nmcli blocks; it returns once the connection (incl. DHCP) is active
+    cmd = ["nmcli", "--wait", "30", "dev", "wifi", "connect", ssid, "ifname", interface]
+    if password:
+        cmd.extend(["password", password])
+    if hidden:
+        cmd.extend(["hidden", "yes"])
+
+    res = run_quiet(cmd, timeout=40)
+    if res is not None and res.returncode == 0:
+        return True, ""
+    if res is None:
+        return False, "Timed out while connecting."
+    return False, (res.stderr or res.stdout or "nmcli failed").strip()
+
+
+def configure_wifi(w: Whiptail):
+    interfaces = wifi_interfaces()
+    if not interfaces:
+        return
+
+    w.title = "ICPC Setup - WiFi Setup"
+    if len(interfaces) == 1:
+        interface = interfaces[0]
+    else:
+        choice, code = w.menu(
+            msg="Choose the wireless interface to configure Wi-Fi:",
+            items=interfaces,
+        )
+        if code != 0 or not choice:
+            return
+        interface = choice
+
+    while True:
+        infobox(w, f"Scanning for Wi-Fi networks on {interface}...")
+        networks = wifi_scan(interface)
+        menu_items = [(ssid, f"{sig}%") for ssid, sig in networks]
+        menu_items += [
+            ("[Enter Hidden / Custom SSID]", "Type the network name manually"),
+            ("[Rescan]", "Scan for networks again"),
+            ("[Skip Wi-Fi Setup]", "Continue without Wi-Fi"),
+        ]
+
+        choice, code = w.menu(
+            msg=f"Select a Wi-Fi network on {interface}:",
+            items=menu_items,
+        )
+        if code != 0 or not choice or choice == "[Skip Wi-Fi Setup]":
+            return
+        if choice == "[Rescan]":
+            continue
+
+        hidden = False
+        if choice == "[Enter Hidden / Custom SSID]":
+            entered_ssid, code = w.inputbox(msg="Enter the Wi-Fi SSID:")
+            entered_ssid = entered_ssid.strip()
+            if code != 0 or not entered_ssid:
+                continue
+            ssid = entered_ssid
+            hidden = True
+        else:
+            ssid = choice
+
+        password, code = w.inputbox(
+            msg=f"Enter the Wi-Fi password for '{ssid}' (leave empty for an open network):",
+            password=True,
+        )
+        if code != 0:
+            continue
+
+        ok, err_msg = apply_wifi(w, interface, ssid, password, hidden=hidden)
+        if ok:
+            return
+
+        if not w.yesno(
+            msg=f"Failed to connect to '{ssid}':\n\n{err_msg}\n\nWould you like to try again?",
+            default="yes",
+        ):
+            return
+
+
+# ----------------------------------------------------------------------------
+# DOMjudge / printing helpers
+# ----------------------------------------------------------------------------
 
 def is_domjudge_enabled() -> bool:
     return read_file("/icpc/DOMJUDGE_ENABLED", "false").lower() == "true"
@@ -229,13 +233,13 @@ def sync_domjudge_config(reload_squid: bool = False):
     cmd = ["/icpc/scripts/domjudge_apply_creds"]
     if reload_squid:
         cmd.append("--reload-squid")
-    run(cmd, check=False)
+    run_quiet(cmd, timeout=60)
 
 
 def sync_printing_config():
     script = Path("/icpc/scripts/printing_configure")
     if script.exists():
-        run([str(script)], check=False)
+        run_quiet([str(script)], timeout=60)
 
 
 def needs_print_team_prompt() -> bool:
@@ -263,6 +267,8 @@ def configure_print_team(w: Whiptail, force: bool = False):
             msg="Enter the team name to display on printed pages:",
             default=existing,
         )
+        if code != 0 and existing:
+            break
         entered = entered.strip()
         if code == 0 and entered:
             for fname in ("/icpc/PRINT_TEAM", "/icpc/TEAMNAME", "/icpc/TEAM"):
@@ -281,8 +287,8 @@ def configure_domjudge(w: Whiptail, force: bool = False):
     url_valid = bool(parsed and parsed.scheme in ("http", "https") and parsed.hostname)
     existing_user, existing_pass = read_domjudge_credentials()
 
+    # Already configured and synced at the start of main(); nothing to do
     if not force and url_valid and existing_user and existing_pass:
-        sync_domjudge_config(reload_squid=True)
         return
 
     if force and url_valid and existing_user and existing_pass:
@@ -291,7 +297,6 @@ def configure_domjudge(w: Whiptail, force: bool = False):
             msg=f"DOMjudge credentials are already configured.\n\nURL: {url}\nTeam: {existing_user}\n\nKeep existing DOMjudge settings?",
             default="yes",
         ):
-            sync_domjudge_config(reload_squid=True)
             return
 
     w.title = "ICPC Setup - DOMjudge Configuration"
@@ -348,6 +353,7 @@ def configure_domjudge(w: Whiptail, force: bool = False):
     os.chown(creds_path, 0, 0)
     Path("/icpc/PRINT_TEAM").unlink(missing_ok=True)
 
+    infobox(w, "Saving DOMjudge settings and reloading the proxy...")
     sync_domjudge_config(reload_squid=True)
 
 
@@ -359,86 +365,18 @@ def welcome(w: Whiptail):
     return code == 0
 
 
-def apply_wifi(interface, ssid, password, hidden=False):
-    print(f"Connecting to Wi-Fi '{ssid}' on {interface}...")
-    cmd = ["nmcli", "dev", "wifi", "connect", ssid, "ifname", interface]
-    if password:
-        cmd.extend(["password", password])
-    if hidden:
-        cmd.extend(["hidden", "yes"])
+# ----------------------------------------------------------------------------
+# Main
+# ----------------------------------------------------------------------------
 
-    res = run(cmd, stdout=PIPE, stderr=PIPE, text=True, check=False)
-    if res.returncode == 0:
-        for _ in range(15):
-            if check_network():
-                break
-            time.sleep(1)
-        print("Connected successfully!")
-        return True, ""
-
-    err_msg = (res.stderr or res.stdout or "nmcli failed").strip()
-    print(f"Error connecting: {err_msg}")
-    return False, err_msg
-
-
-def configure_wifi(w: Whiptail):
-    interfaces = wifi_interfaces()
-    if not interfaces:
+def activate_attached_vt():
+    """If running on a dedicated virtual console (e.g. /dev/tty8 from firstboot.service), switch to it."""
+    try:
+        tty = os.ttyname(0)
+    except OSError:
         return
-
-    w.title = "ICPC Setup - WiFi Setup"
-    if len(interfaces) == 1:
-        interface = interfaces[0]
-    else:
-        choice, code = w.menu(
-            msg="Choose the wireless interface to configure Wi-Fi:",
-            items=interfaces,
-        )
-        if code != 0 or not choice:
-            return
-        interface = choice
-
-    while True:
-        print(f"Scanning for networks on: {interface}")
-        ssids = wifi_scan(interface)
-        menu_items = list(ssids) + ["[Enter Hidden / Custom SSID]", "[Rescan]", "[Skip Wi-Fi Setup]"]
-
-        choice, code = w.menu(
-            msg=f"Select a Wi-Fi network on {interface}:",
-            items=menu_items,
-        )
-        if code != 0 or not choice or choice == "[Skip Wi-Fi Setup]":
-            return
-        if choice == "[Rescan]":
-            continue
-
-        hidden = False
-        if choice == "[Enter Hidden / Custom SSID]":
-            entered_ssid, code = w.inputbox(msg="Enter the Wi-Fi SSID:")
-            entered_ssid = entered_ssid.strip()
-            if code != 0 or not entered_ssid:
-                continue
-            ssid = entered_ssid
-            hidden = True
-        else:
-            ssid = choice
-
-        password, code = w.inputbox(
-            msg=f"Enter the Wi-Fi password for '{ssid}' (leave empty for an open network):",
-            password=True,
-        )
-        if code != 0:
-            continue
-
-        ok, err_msg = apply_wifi(interface, ssid, password, hidden=hidden)
-        if ok:
-            return
-
-        if not w.yesno(
-            msg=f"Failed to connect to '{ssid}':\n\n{err_msg}\n\nWould you like to try again?",
-            default="yes",
-        ):
-            return
+    if tty.startswith("/dev/tty") and tty[8:].isdigit():
+        run_quiet(["chvt", tty[8:]], timeout=3)
 
 
 def main():
@@ -458,22 +396,28 @@ def main():
         print("Already configured. Run with -f or --force to reconfigure.")
         sys.exit(0)
 
+    activate_attached_vt()
+
+    w = Whiptail(title="ICPC Setup")
+    has_wifi = len(wifi_interfaces()) > 0  # always False when wireless is disabled
+
     network_status = check_network()
-    if not network_status and is_wireless_enabled() and len(wifi_interfaces()) > 0:
-        # Wait up to 8s in case pre-configured Wi-Fi or DHCP is still associating on boot
-        for _ in range(8):
-            if check_network():
-                network_status = True
-                break
-            time.sleep(1)
+    if has_wifi and not network_status:
+        set_network_backtitle(w, network_status)
+        infobox(w, "Waiting for the network connection (up to 15 seconds)...")
+        wait_for_network_manager(15)
+        network_status = check_network()
+    set_network_backtitle(w, network_status)
 
-    w = Whiptail(title="ICPC Setup", backtitle=f"Network status: {'online' if network_status else 'offline'}")
-
-    welcome(w)
+    # Only show the welcome screen when there is actually something to ask
+    if force or needs_domjudge_setup() or needs_print_team_prompt() or (has_wifi and not network_status):
+        welcome(w)
 
     # Prompt to configure Wi-Fi when wireless support is enabled and either no active
     # network connection is present (or the admin ran icpc_setup -f).
-    if is_wireless_enabled() and len(wifi_interfaces()) > 0:
+    if has_wifi:
+        network_status = check_network()  # DHCP may have finished while the welcome screen was shown
+        set_network_backtitle(w, network_status)
         if not network_status:
             if w.yesno(
                 msg="No active network connection was detected.\n\nWould you like to connect to a Wi-Fi network now?",
@@ -486,16 +430,14 @@ def main():
                 default="no",
             ):
                 configure_wifi(w)
-
-        network_status = check_network()
-        w.backtitle = f"Network status: {'online' if network_status else 'offline'}"
+        set_network_backtitle(w, check_network())
 
     configure_domjudge(w, force=force)
     configure_print_team(w, force=force)
-    sync_printing_config()
 
     # Clear the screen
     print(chr(27) + "[H" + chr(27) + "[J")
+    print("Running self test, please wait...\n", flush=True)
 
     # Run the self-test script
     p = Popen("su - -c /icpc/scripts/self_test | tee /icpc/self_test_report", shell=True, stderr=PIPE)
