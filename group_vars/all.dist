@@ -21,8 +21,10 @@ icpcadmin_ssh_keys: []
 #   "usb" : Booted from an external USB flash drive (default). Keeps USB stability
 #           workarounds enabled (blacklists UAS, disables USB autosuspend/LPM,
 #           caps dirty page writeback in 99-usb-flush.conf, preloads FS cache on
-#           boot via warm-fs-cache/vmtouch, disables fstrim.timer, and keeps
-#           journald logs volatile).
+#           boot via warm-fs-cache/vmtouch, disables fstrim.timer, keeps
+#           journald logs volatile, stops/masks rsyslog so /var/log can't fill the
+#           drive, keeps VS Code caches/logs in RAM and caps the C/C++ IntelliSense
+#           cache at 512MB).
 #   "ssd" : Installed directly on the PCs' internal SATA/NVMe SSD. Removes USB-flash
 #           throttling/workarounds (allows UAS, removes dirty-buffer writeback caps,
 #           drops usbcore LPM/autosuspend kernel params, disables warm-fs-cache boot

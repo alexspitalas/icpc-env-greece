@@ -52,14 +52,114 @@
     executable: /bin/bash
 
 
-- name: create a script to symlink our extensions
+# devel_tools runs before main.yml resolves effective_install_target, so resolve it here.
+- name: resolve install target for vscode disk-usage tweaks
+  set_fact:
+    vscode_install_target: "{{ effective_install_target | default(install_target | default('usb') | lower | trim) }}"
+
+# On USB installs, VS Code's regenerable caches (V8 code cache, compiled JS, GPU
+# cache, HTTP cache, logs) are kept in RAM ($XDG_RUNTIME_DIR, a per-user tmpfs) via
+# symlinks created at login. Settings, state, workspaceStorage and globalStorage
+# (incl. the seeded disabled-extensions list) stay on disk. On SSD this is skipped.
+- name: create a script to symlink our extensions (and, on usb, move vscode caches to RAM)
   copy:
     dest: /usr/local/bin/vscode-extension-install
     mode: 0755
     content: |
       #!/bin/bash
-      mkdir -p $HOME/.vscode
-      ln -sf /opt/vscode/extensions $HOME/.vscode/extensions
+      mkdir -p "$HOME/.vscode"
+      ln -sfn /opt/vscode/extensions "$HOME/.vscode/extensions"
+      {% if vscode_install_target == 'usb' %}
+
+      # USB install: keep VS Code's regenerable caches/logs in RAM instead of the flash drive.
+      RT="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+      if [ -d "$RT" ] && [ -w "$RT" ]; then
+        CODE_DIR="$HOME/.config/Code"
+        mkdir -p "$CODE_DIR"
+        VSCODE_RUNNING=0
+        if pgrep -u "$(id -u)" -f /usr/share/code/code >/dev/null 2>&1; then
+          VSCODE_RUNNING=1
+        fi
+        for d in Cache CachedData "Code Cache" GPUCache DawnGraphiteCache DawnWebGPUCache logs; do
+          target="$RT/vscode-cache/$d"
+          # Always ensure the tmpfs target exists so symlinks from a previous boot never dangle.
+          mkdir -p "$target"
+          if [ "$VSCODE_RUNNING" -eq 0 ]; then
+            if [ -e "$CODE_DIR/$d" ] && [ ! -L "$CODE_DIR/$d" ]; then
+              rm -rf "$CODE_DIR/$d"
+            fi
+            ln -sfn "$target" "$CODE_DIR/$d"
+          fi
+        done
+      fi
+      {% endif %}
+
+# The per-user tmpfs defaults to 10% of RAM; give it 20% on USB so the VS Code caches
+# (~100-300MB) never run out of room on low-RAM machines. tmpfs only uses RAM as filled.
+- name: ensure logind.conf.d exists (usb)
+  when: vscode_install_target == 'usb'
+  file: path=/etc/systemd/logind.conf.d state=directory mode=0755
+
+- name: raise per-user runtime tmpfs size on usb (holds vscode caches)
+  when: vscode_install_target == 'usb'
+  copy:
+    dest: /etc/systemd/logind.conf.d/90-icpc-runtime-size.conf
+    content: |
+      [Login]
+      RuntimeDirectorySize=20%
+    owner: root
+    group: root
+    mode: '0644'
+
+- name: remove runtime tmpfs size override on ssd
+  when: vscode_install_target == 'ssd'
+  file:
+    path: /etc/systemd/logind.conf.d/90-icpc-runtime-size.conf
+    state: absent
+
+# C/C++ extension IntelliSense cache (~/.cache/vscode-cpptools/ipch) defaults to 5GB.
+# Each .cpp including <bits/stdc++.h> can add ~80-160MB, so a contestant with many
+# solution files can eat GBs of the USB root fs. Cap it at 512MB (10x smaller than
+# default, still large enough to hold multiple PCH files without thrashing).
+- name: ensure skel VS Code user dir exists (usb)
+  when: vscode_install_target == 'usb'
+  file: path=/etc/skel/.config/Code/User state=directory mode=0755
+
+- name: seed VS Code user settings in skel (usb only; cap cpptools IntelliSense cache)
+  when: vscode_install_target == 'usb'
+  copy:
+    dest: /etc/skel/.config/Code/User/settings.json
+    force: no
+    content: |
+      {
+        "C_Cpp.intelliSenseCacheSize": 512
+      }
+
+- name: remove usb-seeded VS Code settings on ssd (only if unmodified default)
+  when: vscode_install_target == 'ssd'
+  shell: |
+    python3 - <<'PY'
+    import json, os
+    path = "/etc/skel/.config/Code/User/settings.json"
+    if not os.path.isfile(path):
+        raise SystemExit(0)
+    with open(path, "r", encoding="utf-8") as f:
+        raw = f.read()
+    # Clean up both the current strict-JSON file and any legacy commented version.
+    if "icpc-env usb install defaults" in raw:
+        os.remove(path)
+        print("removed")
+        raise SystemExit(0)
+    try:
+        data = json.loads(raw)
+    except Exception:
+        raise SystemExit(0)
+    if data in ({"C_Cpp.intelliSenseCacheSize": 512}, {"C_Cpp.intelliSenseCacheSize": 256}):
+        os.remove(path)
+        print("removed")
+    PY
+  register: vscode_usb_settings_cleanup
+  changed_when: "'removed' in (vscode_usb_settings_cleanup.stdout | default(''))"
 
 - name: add vscode extension install script to autostart
   copy:

@@ -68,6 +68,24 @@ if [ -d /var/log/journal ]; then
   rm -rf /var/log/journal/*
 fi
 
+# Remove build-VM logs (ansible runs, apt, syslog from the build...) so the image
+# ships with an empty /var/log. Binary archive logs (sysstat/pcp) and rotated/compressed
+# logs are deleted; live text logs are truncated in place to preserve ownership/permissions.
+rm -rf /var/log/sysstat/* /var/log/pcp/* /var/crash/* 2>/dev/null || true
+find /var/log -type f -regextype posix-extended \( -name '*.gz' -o -name '*.xz' -o -name '*.zst' -o -name '*.old' -o -regex '.*\.[0-9]+' \) -delete 2>/dev/null || true
+find /var/log -type f -exec truncate -s 0 {} + 2>/dev/null || true
+
+# Lower the ext4 root-only reserved blocks from the default 5% to 1%.
+# Contestant programs (VS Code etc.) run as a normal user and see "No space left on
+# device" once usage reaches 100% minus this reserve. On a ~28GB root that's ~1.1GB
+# handed back to contestants; 1% is still plenty for root to recover a full disk.
+sync
+ROOTDEV=$(findmnt -n -o SOURCE /)
+if [ -n "$ROOTDEV" ] && [ "$(findmnt -n -o FSTYPE /)" = "ext4" ]; then
+  tune2fs -m 1 "$ROOTDEV" || true
+  sync
+fi
+
 # make sure wireguard config is wiped so it can be generated for each system on boot
 #systemctl stop wg-setup
 #wg-quick down contest

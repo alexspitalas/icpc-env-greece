@@ -22,6 +22,23 @@
 
 
 # Create VS Code shortcut (always available)
+# The icon name shipped by the 'code' package has changed between releases
+# ('vscode', 'com.visualstudio.code', ...); there is no icon called 'code', which
+# left the desktop shortcut blank. Read the real icon from the package's own
+# .desktop file, and fall back to the pixmap path / 'vscode'.
+- name: detect VS Code icon from the installed package
+  shell: |
+    icon=$(sed -n 's/^Icon=//p' /usr/share/applications/code.desktop 2>/dev/null | head -n1)
+    if [ -z "$icon" ]; then
+      for f in /usr/share/pixmaps/vscode.png /usr/share/pixmaps/com.visualstudio.code.png /usr/share/code/resources/app/resources/linux/code.png; do
+        if [ -f "$f" ]; then icon="$f"; break; fi
+      done
+    fi
+    echo "${icon:-vscode}"
+  register: vscode_icon_detect
+  changed_when: false
+  failed_when: false
+
 - name: Create VS Code desktop shortcut
   copy:
     dest: /root/DesktopTemplates/VSCode.desktop
@@ -30,7 +47,7 @@
       [Desktop Entry]
       Name=VS Code
       Exec=code --new-window %F
-      Icon=code
+      Icon={{ vscode_icon_detect.stdout | default('vscode', true) | trim }}
       Type=Application
       Terminal=false
 

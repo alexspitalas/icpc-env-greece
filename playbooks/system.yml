@@ -107,6 +107,66 @@
     mode: '0644'
   notify: restart systemd-journald
 
+# On USB installs the journal is volatile (RAM only), but rsyslog would still write
+# /var/log/syslog, kern.log, auth.log... to the flash drive with no size cap. On the
+# SEERC 2026 image this (plus a noisy boot service) filled the root filesystem and
+# broke VS Code for contestants. Nothing in this image reads those files, so on USB
+# rsyslog is stopped and masked; `journalctl` (RAM) still has everything since boot.
+- name: check if rsyslog unit exists
+  command: systemctl list-unit-files rsyslog.service
+  register: rsyslog_unit_check
+  failed_when: false
+  changed_when: false
+
+# Stop/mask syslog.socket first (it is a static unit with no [Install] section),
+# then disable+stop rsyslog BEFORE masking it (Ansible runs mask before disable if
+# both are in the same task, which would skip removing the wants symlink).
+- name: stop and mask syslog.socket on usb (it only exists to activate rsyslog)
+  when: sys_install_target == 'usb'
+  systemd:
+    name: syslog.socket
+    state: stopped
+    masked: yes
+  failed_when: false
+
+- name: stop and disable rsyslog on usb (before masking so wants symlinks are cleaned up)
+  when:
+    - sys_install_target == 'usb'
+    - "'rsyslog.service' in (rsyslog_unit_check.stdout | default(''))"
+    - "'masked' not in (rsyslog_unit_check.stdout | default(''))"
+  systemd:
+    name: rsyslog
+    state: stopped
+    enabled: no
+
+- name: mask rsyslog on usb (avoid unbounded /var/log growth on the flash drive)
+  when:
+    - sys_install_target == 'usb'
+    - "'rsyslog.service' in (rsyslog_unit_check.stdout | default(''))"
+  systemd:
+    name: rsyslog
+    state: stopped
+    masked: yes
+
+- name: unmask syslog.socket on ssd
+  when: sys_install_target == 'ssd'
+  systemd:
+    name: syslog.socket
+    masked: no
+    daemon_reload: yes
+  failed_when: false
+
+- name: re-enable rsyslog on ssd
+  when:
+    - sys_install_target == 'ssd'
+    - "'rsyslog.service' in (rsyslog_unit_check.stdout | default(''))"
+  systemd:
+    name: rsyslog
+    masked: no
+    enabled: yes
+    daemon_reload: yes
+    state: started
+
 - name: systemd disable status messages on console
   copy: src=files/systemd-system.conf dest=/etc/systemd/system.conf
 
