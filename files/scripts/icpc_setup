@@ -267,10 +267,10 @@ def configure_print_team(w: Whiptail, force: bool = False):
             msg="Enter the team name to display on printed pages:",
             default=existing,
         )
-        if code != 0 and existing:
-            break
+        if code != 0:
+            return
         entered = entered.strip()
-        if code == 0 and entered:
+        if entered:
             for fname in ("/icpc/PRINT_TEAM", "/icpc/TEAMNAME", "/icpc/TEAM"):
                 Path(fname).write_text(entered + "\n", encoding="utf-8")
                 os.chmod(fname, 0o644)
@@ -308,9 +308,11 @@ def configure_domjudge(w: Whiptail, force: bool = False):
                 msg="Enter the DOMjudge server URL (e.g. https://judge.example.com/):",
                 default=url,
             )
+            if code != 0:
+                return
             entered_url = entered_url.strip()
             p = urlparse(entered_url) if entered_url else None
-            if code != 0 or not p or p.scheme not in ("http", "https") or not p.hostname:
+            if not p or p.scheme not in ("http", "https") or not p.hostname:
                 w.msgbox("Please enter a valid http:// or https:// DOMjudge URL.")
                 continue
             url = entered_url
@@ -320,8 +322,10 @@ def configure_domjudge(w: Whiptail, force: bool = False):
             msg=f"DOMjudge URL: {url}\n\nEnter the DOMjudge team username:",
             default=username,
         )
+        if code != 0:
+            return
         entered_user = entered_user.strip()
-        if code != 0 or not entered_user:
+        if not entered_user:
             w.msgbox("Team username cannot be empty.")
             continue
         username = entered_user
@@ -330,7 +334,9 @@ def configure_domjudge(w: Whiptail, force: bool = False):
             msg=f"Enter the DOMjudge password for team '{username}':",
             password=True,
         )
-        if code != 0 or not entered_pass:
+        if code != 0:
+            return
+        if not entered_pass:
             w.msgbox("Team password cannot be empty.")
             continue
 

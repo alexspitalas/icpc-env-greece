@@ -64,9 +64,6 @@
     dest: /usr/local/bin/djprint
     state: link
 
-- name: copy icpc default wallpaper
-  copy: dest=/icpc/wallpaper.png src=files/wallpaper.png
-
 - name: set timezone
   community.general.timezone:
     name: "{{ icpc_timezone }}"
@@ -132,9 +129,29 @@
   service: name=cups-browsed state=stopped enabled=no
 
 - name: copy icpc default wallpaper
-  copy: dest=/icpc/wallpaper.png src=files/wallpaper.png
+  copy:
+    dest: /icpc/wallpaper.png
+    src: files/wallpaper.png
+    mode: '0644'
+
+- name: check if xfce4 backdrops directory exists
+  stat:
+    path: /usr/share/xfce4/backdrops
+  register: xfce4_backdrops_dir
+
+- name: point xubuntu default wallpaper symlink to icpc wallpaper (eliminates default wallpaper flash on fresh login)
+  when: xfce4_backdrops_dir.stat.exists and xfce4_backdrops_dir.stat.isdir
+  file:
+    src: /icpc/wallpaper.png
+    dest: /usr/share/xfce4/backdrops/xubuntu-wallpaper.png
+    state: link
+    force: yes
+
 - name: Copy autostart desktop entry to set wallpaper
-  copy: src=files/icpc_autostart.desktop dest=/etc/xdg/autostart/icpc_autostart.desktop
+  copy:
+    src: files/icpc_autostart.desktop
+    dest: /etc/xdg/autostart/icpc_autostart.desktop
+    mode: '0644'
 
 - name: create icpcadmin group
   group: name='icpcadmin' state='present'
