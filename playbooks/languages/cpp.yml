@@ -1,17 +1,25 @@
 ---
-# Add G++ 14 repository for ICPC 2025 compliance
+# Ubuntu 24.04 (Noble) ships g++-14 natively in the official universe repository.
+# Remove any legacy Launchpad PPA source files left over from earlier builds so
+# apt never depends on ppa.launchpadcontent.net.
+- name: find legacy ubuntu-toolchain-r PPA source files
+  find:
+    paths: /etc/apt/sources.list.d
+    patterns: "*ubuntu-toolchain-r*"
+  register: toolchain_ppa_files
+
+- name: remove legacy ubuntu-toolchain-r PPA source files
+  file:
+    path: "{{ item.path }}"
+    state: absent
+  loop: "{{ toolchain_ppa_files.files }}"
+
 - name: enable universe repository
   command: add-apt-repository -y universe
   become: yes
 
 - name: update apt cache
   apt:
-    update_cache: yes
-
-- name: add gcc-14 repository
-  apt_repository:
-    repo: ppa:ubuntu-toolchain-r/test
-    state: present
     update_cache: yes
 
 - name: cpp
@@ -39,7 +47,7 @@
     - /opt/cpp-docs
     - /opt/libc-manual
 
-- name: cpp reference docs 
+- name: cpp reference docs
   command: curl -o /opt/cpp-docs/tutorial.pdf https://cplusplus.com/files/tutorial.pdf
 
 - name: libc reference docs
@@ -66,7 +74,4 @@
               index: index.html
       register: updated
     - set_fact:
-        lang_docs: "{{ updated.lang_docs }}"    
-    
-
-
+        lang_docs: "{{ updated.lang_docs }}"

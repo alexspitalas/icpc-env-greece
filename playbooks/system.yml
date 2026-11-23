@@ -190,12 +190,29 @@
         {{ base }}
       {%- endif -%}
 
+- name: ensure firefox policies directories exist
+  file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+  loop:
+    - /etc/firefox/policies
+    - /usr/lib/firefox/distribution
+
 - name: Configure firefox policies (trust squid cert, homepage/bookmarks/etc)
   copy:
-    dest: /usr/lib/firefox/distribution/policies.json
+    dest: "{{ item }}"
+    owner: root
+    group: root
+    mode: '0644'
     content: |
       {
         "policies":
         {{ effective_firefox_policies|to_nice_json }}
       }
+  loop:
+    - /etc/firefox/policies/policies.json
+    - /usr/lib/firefox/distribution/policies.json
 

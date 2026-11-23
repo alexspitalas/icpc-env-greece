@@ -56,6 +56,19 @@
           # No translations
           Acquire::Language "none";
 
+    - name: find legacy Launchpad PPA source files if present from earlier builds
+      find:
+        paths: /etc/apt/sources.list.d
+        patterns:
+          - "*ubuntu-toolchain-r*"
+          - "*mozillateam*"
+      register: legacy_launchpad_ppas
+    - name: remove legacy Launchpad PPA source files
+      file:
+        path: "{{ item.path }}"
+        state: absent
+      loop: "{{ legacy_launchpad_ppas.files }}"
+
     - name: be sure apt cache is updated
       apt: update_cache=yes upgrade=dist
 

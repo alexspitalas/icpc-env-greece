@@ -30,18 +30,61 @@
       - xfce4-terminal
 
 
-- name: add mozilla firefox ppa (because snaps are dumb)
-  ansible.builtin.apt_repository:
-    repo: ppa:mozillateam/ppa
-    update_cache: yes
+- name: find legacy mozillateam Launchpad PPA source files
+  find:
+    paths: /etc/apt/sources.list.d
+    patterns: "*mozillateam*"
+  register: mozillateam_ppa_files
 
-- name: apt preference for firefox to only install from the ppa
+- name: remove legacy mozillateam Launchpad PPA source files
+  file:
+    path: "{{ item.path }}"
+    state: absent
+  loop: "{{ mozillateam_ppa_files.files }}"
+
+- name: ensure apt keyrings directory exists
+  file:
+    path: /etc/apt/keyrings
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+
+- name: download Mozilla APT repository signing key
+  ansible.builtin.get_url:
+    url: https://packages.mozilla.org/apt/repo-signing-key.gpg
+    dest: /etc/apt/keyrings/packages.mozilla.org.asc
+    owner: root
+    group: root
+    mode: '0644'
+
+- name: add official Mozilla APT repository (avoids snap and Launchpad PPA outages)
+  copy:
+    dest: /etc/apt/sources.list.d/mozilla.sources
+    owner: root
+    group: root
+    mode: '0644'
+    content: |
+      Types: deb
+      URIs: https://packages.mozilla.org/apt
+      Suites: mozilla
+      Components: main
+      Signed-By: /etc/apt/keyrings/packages.mozilla.org.asc
+
+- name: apt preference for firefox to install from official Mozilla APT repository
   copy:
     dest: /etc/apt/preferences.d/mozilla-firefox
+    owner: root
+    group: root
+    mode: '0644'
     content: |
-      Package: firefox
-      Pin: release o=LP-PPA-mozillateam
-      Pin-Priority: 1001
+      Package: *
+      Pin: origin packages.mozilla.org
+      Pin-Priority: 1000
+
+- name: update apt cache after adding Mozilla repository
+  apt:
+    update_cache: yes
 
 - name: install gui apps
   apt:
