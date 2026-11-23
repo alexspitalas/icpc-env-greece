@@ -19,12 +19,17 @@
   block:
     # Installed before changing 10-globally-managed-devices.conf so Ubuntu's default
     # keeps eth0 unmanaged during the build VM session and SSH stays up.
+    # install_recommends: false + explicit policykit-1-gnome prevents network-manager-gnome
+    # from pulling in gnome-shell (first Depends alternative) and gnome-keyring (Recommends),
+    # which otherwise triggers "Choose password for new keyring" popups on autologin.
     - name: install NetworkManager, XFCE tray applet, and wireless tools
       apt:
         state: present
+        install_recommends: false
         pkg:
           - network-manager
           - network-manager-gnome
+          - policykit-1-gnome
           - wpasupplicant
           - iw
           - wireless-regdb

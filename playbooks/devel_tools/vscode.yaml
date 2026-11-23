@@ -16,10 +16,44 @@
   shell: code --extensions-dir /opt/vscode/extensions --user-data-dir /opt/vscode --no-sandbox --install-extension {{ item }}
   loop: "{{ vscode_extensions }}"
 
+# Remove AI-assisted extensions (ICPC rules prohibit AI code completion/chat;
+# also cleans up any leftover or transitively-installed IntelliCode/Copilot extensions).
+- name: ensure AI-driven VS Code extensions are not installed
+  shell: |
+    installed=$(code --extensions-dir /opt/vscode/extensions --user-data-dir /opt/vscode --no-sandbox --list-extensions 2>/dev/null || true)
+    removed=0
+    for ext in visualstudioexptteam.vscodeintellicode visualstudioexptteam.intellicode-api-usage-examples github.copilot github.copilot-chat; do
+      if printf '%s\n' "$installed" | grep -iqx "$ext"; then
+        if code --extensions-dir /opt/vscode/extensions --user-data-dir /opt/vscode --no-sandbox --uninstall-extension "$ext"; then
+          removed=1
+        fi
+      fi
+    done
+    [ "$removed" -eq 1 ] && echo "removed" || true
+  args:
+    executable: /bin/bash
+  register: vscode_ai_ext_cleanup
+  changed_when: "'removed' in (vscode_ai_ext_cleanup.stdout | default(''))"
+
 # TODO: This is intentionally over-permissive; some extension files need
 # execute permissions for C/C++ tooling to work. Narrow this down later.
 - name: make vscode extension files executable
   shell: find /opt/vscode/extensions -type f -exec chmod 755 {} +
+
+# Platform-specific ms-vscode.cpptools packages bundle bin/cpptools, but on first
+# activation cpptools checks for install.lock and otherwise tries to fetch
+# dependencies and write install.lock into read-only /opt/vscode/extensions
+# (failing with EACCES offline and leaving C/C++ IntelliSense disabled).
+- name: pre-create cpptools install.lock so offline C/C++ IntelliSense activates cleanly
+  shell: |
+    for d in /opt/vscode/extensions/ms-vscode.cpptools-*; do
+      if [ -d "$d" ] && [ -x "$d/bin/cpptools" ] && [ ! -f "$d/install.lock" ]; then
+        touch "$d/install.lock"
+        chmod 644 "$d/install.lock"
+      fi
+    done
+  args:
+    executable: /bin/bash
 
 
 
@@ -52,6 +86,19 @@
     executable: /bin/bash
 
 
+# Prevent VS Code from prompting to create/unlock an OS keyring under LightDM autologin.
+- name: ensure skel .vscode directory exists
+  file: path=/etc/skel/.vscode state=directory mode=0755
+
+- name: configure VS Code to use basic password store in skel (avoid OS keyring prompts)
+  copy:
+    dest: /etc/skel/.vscode/argv.json
+    mode: '0644'
+    content: |
+      {
+        "password-store": "basic"
+      }
+
 # devel_tools runs before main.yml resolves effective_install_target, so resolve it here.
 - name: resolve install target for vscode disk-usage tweaks
   set_fact:
@@ -69,6 +116,13 @@
       #!/bin/bash
       mkdir -p "$HOME/.vscode"
       ln -sfn /opt/vscode/extensions "$HOME/.vscode/extensions"
+      if [ ! -f "$HOME/.vscode/argv.json" ]; then
+        printf '{\n  "password-store": "basic"\n}\n' > "$HOME/.vscode/argv.json"
+      fi
+      if [ ! -f "$HOME/.config/Code/User/settings.json" ] && [ -f /etc/skel/.config/Code/User/settings.json ]; then
+        mkdir -p "$HOME/.config/Code/User"
+        cp /etc/skel/.config/Code/User/settings.json "$HOME/.config/Code/User/settings.json"
+      fi
       {% if vscode_install_target == 'usb' %}
 
       # USB install: keep VS Code's regenerable caches/logs in RAM instead of the flash drive.
@@ -117,49 +171,68 @@
     path: /etc/systemd/logind.conf.d/90-icpc-runtime-size.conf
     state: absent
 
-# C/C++ extension IntelliSense cache (~/.cache/vscode-cpptools/ipch) defaults to 5GB.
-# Each .cpp including <bits/stdc++.h> can add ~80-160MB, so a contestant with many
-# solution files can eat GBs of the USB root fs. Cap it at 512MB (10x smaller than
-# default, still large enough to hold multiple PCH files without thrashing).
-- name: ensure skel VS Code user dir exists (usb)
-  when: vscode_install_target == 'usb'
+# Seed default VS Code user settings into /etc/skel:
+# - Disable built-in AI/Chat features and hide the right-side Secondary Side Bar
+#   (offline/walled-garden contest environment does not allow AI chat).
+# - Disable Workspace Trust / Restricted Mode so C/C++, Python, and Java
+#   IntelliSense extensions activate immediately in any folder or file.
+# - Explicitly enable C/C++ IntelliSense (default engine, autocomplete, squiggles).
+# - Disable offline extension auto-update checks.
+# - On USB installs only, cap C/C++ IntelliSense cache (~/.cache/vscode-cpptools/ipch)
+#   at 512MB instead of the 5GB default so it does not exhaust the USB root filesystem.
+- name: ensure skel VS Code user dir exists
   file: path=/etc/skel/.config/Code/User state=directory mode=0755
 
-- name: seed VS Code user settings in skel (usb only; cap cpptools IntelliSense cache)
-  when: vscode_install_target == 'usb'
-  copy:
-    dest: /etc/skel/.config/Code/User/settings.json
-    force: no
-    content: |
-      {
-        "C_Cpp.intelliSenseCacheSize": 512
-      }
-
-- name: remove usb-seeded VS Code settings on ssd (only if unmodified default)
-  when: vscode_install_target == 'ssd'
+- name: configure default VS Code user settings in skel
   shell: |
     python3 - <<'PY'
     import json, os
+
     path = "/etc/skel/.config/Code/User/settings.json"
-    if not os.path.isfile(path):
-        raise SystemExit(0)
-    with open(path, "r", encoding="utf-8") as f:
-        raw = f.read()
-    # Clean up both the current strict-JSON file and any legacy commented version.
-    if "icpc-env usb install defaults" in raw:
-        os.remove(path)
-        print("removed")
-        raise SystemExit(0)
-    try:
-        data = json.loads(raw)
-    except Exception:
-        raise SystemExit(0)
-    if data in ({"C_Cpp.intelliSenseCacheSize": 512}, {"C_Cpp.intelliSenseCacheSize": 256}):
-        os.remove(path)
-        print("removed")
+    install_target = "{{ vscode_install_target }}"
+
+    data = {}
+    if os.path.isfile(path):
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                loaded = json.load(f)
+            if isinstance(loaded, dict):
+                data = loaded
+        except Exception:
+            data = {}
+
+    defaults = {
+        "chat.disableAIFeatures": True,
+        "chat.commandCenter.enabled": False,
+        "workbench.secondarySideBar.defaultVisibility": "hidden",
+        "security.workspace.trust.enabled": False,
+        "C_Cpp.intelliSenseEngine": "default",
+        "C_Cpp.autocomplete": "default",
+        "C_Cpp.errorSquiggles": "enabled",
+        "C_Cpp.default.intelliSenseMode": "linux-gcc-x64",
+        "extensions.autoUpdate": False,
+        "extensions.autoCheckUpdates": False,
+    }
+
+    updated = dict(data)
+    updated.update(defaults)
+
+    if install_target == "usb":
+        updated.setdefault("C_Cpp.intelliSenseCacheSize", 512)
+    elif updated.get("C_Cpp.intelliSenseCacheSize") in (512, 256):
+        updated.pop("C_Cpp.intelliSenseCacheSize", None)
+
+    if updated != data or not os.path.isfile(path):
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(updated, f, indent=2)
+            f.write("\n")
+        os.chmod(path, 0o644)
+        print("changed")
     PY
-  register: vscode_usb_settings_cleanup
-  changed_when: "'removed' in (vscode_usb_settings_cleanup.stdout | default(''))"
+  args:
+    executable: /bin/bash
+  register: vscode_skel_settings
+  changed_when: "'changed' in (vscode_skel_settings.stdout | default(''))"
 
 - name: add vscode extension install script to autostart
   copy:

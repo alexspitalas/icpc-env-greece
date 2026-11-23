@@ -107,6 +107,7 @@
     pkg:
       - gdm3
       - gnome-shell
+      - gnome-keyring
       - byobu
       - xscreensaver
       - xscreensaver-data
