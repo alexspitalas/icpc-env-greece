@@ -7,11 +7,23 @@ UTILDIR="/icpc"
 rm -rf /etc/skel/.git
 rm -rf /home/icpcadmin/.git
 
-# Cleanup 'imageadmin' things
-killall -9 -u imageadmin
+# Cleanup build-only accounts ('imageadmin' and any autoinstall 'default' user)
+killall -9 -u imageadmin 2>/dev/null || true
 sleep 5
+userdel -f -r imageadmin 2>/dev/null || true
 rm -rf /home/imageadmin
-userdel imageadmin
+if id default >/dev/null 2>&1; then
+  killall -9 -u default 2>/dev/null || true
+  userdel -f -r default 2>/dev/null || true
+  rm -rf /home/default
+fi
+
+# Strip the publicly-committed build bootstrap key from any remaining authorized_keys files
+for authkeys in /root/.ssh/authorized_keys /home/icpcadmin/.ssh/authorized_keys; do
+  if [ -f "$authkeys" ]; then
+    sed -i '/AAAAC3NzaC1lZDI1NTE5AAAAIB9pjASmP4wQkhJ1VEbl0l1Vgn3lsOzctRS2m0wBVlaO/d' "$authkeys"
+  fi
+done
 
 # Delete proxy settings for apt(if any)
 rm -f /etc/apt/apt.conf.d/01proxy

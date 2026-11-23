@@ -69,6 +69,6 @@
     or (domjudge_username | default('') | trim | length == 0)
     or (domjudge_password | default('') | string | length == 0)
 
-- name: synchronize DOMjudge ~/.netrc, /etc/profile.d/domjudge.sh, guide-config.js, and Squid autologin
+- name: synchronize DOMjudge /etc/profile.d/domjudge.sh, guide-config.js, and Squid autologin/API auth
   command: /icpc/scripts/domjudge_apply_creds
   notify: restart squid

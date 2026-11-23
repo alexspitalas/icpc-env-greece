@@ -97,7 +97,7 @@ if [ "$DOMJUDGE_ENABLED" = "true" ] || grep -q 'acl autologin url_regex' /etc/sq
   echo "${DJURL:-${RED}Not Set${RESET}}"
 
   print_check "DOMjudge Submit Client"
-  if [ -x /usr/local/bin/submit ] && [ -s /home/contestant/.netrc ]; then
+  if [ -x /usr/local/bin/submit ] && grep -q 'domjudge_api' /etc/squid/autologin.conf 2>/dev/null; then
     print_ok
   else
     print_fail
@@ -130,7 +130,7 @@ fi
 case "$PRINT_MODE_VAL" in
   domjudge)
     print_check "Printing via DOMjudge API"
-    if [ -x /usr/local/bin/submit ] && [ -s /home/contestant/.netrc ]; then
+    if [ -x /usr/local/bin/submit ] && grep -q 'domjudge_api' /etc/squid/autologin.conf 2>/dev/null; then
       print_ok
     else
       print_fail

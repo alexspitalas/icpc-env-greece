@@ -1,6 +1,8 @@
 # 4MB is the default, so we could omit that...
 # dynamic_cert_mem_cache_size=4MB
-http_port 3128 ssl-bump generate-host-certificates=on tls-cert=/etc/squid/squidCA.crt tls-key=/etc/squid/squidCA.pem
+# Bind Squid only to loopback (IPv4 + IPv6) so it is never exposed on LAN interfaces
+http_port 127.0.0.1:3128 ssl-bump generate-host-certificates=on tls-cert=/etc/squid/squidCA.crt tls-key=/etc/squid/squidCA.pem
+http_port [::1]:3128 ssl-bump generate-host-certificates=on tls-cert=/etc/squid/squidCA.crt tls-key=/etc/squid/squidCA.pem
 
 # need to manually initialized the ssl_db
 #sudo /usr/lib/squid/security_file_certgen -c -s /var/spool/squid/ssl_db -M 4MB
@@ -45,16 +47,26 @@ http_access deny all
 # show a block page
 deny_info ICPC_ERR_ACCESS_DENIED all
 
+# ===== DOMJUDGE AUTOLOGIN & API AUTH =====
+# Define an always-present (never-matching) default so !domjudge_api below is valid
+# even when /etc/squid/autologin.conf is a placeholder or DOMjudge is disabled.
+acl domjudge_api url_regex ^$
+{% for url in (squid_autologin_urls | default([])) %}
+acl autologin url_regex {{ url }}
+{% endfor %}
+include /etc/squid/autologin.conf
+
 # ===== CONTEST SERVER AUTH =====
 # Inject the auth token (replaces the old tinyproxy AddHeader in playbooks/proxy.yaml).
-# Only sent to auth_token_domains so the token is not leaked to other whitelisted sites.
+# Only sent to auth_token_domains so the token is not leaked to other whitelisted sites,
+# and skipped on domjudge_api where Squid injects HTTP Basic auth for the submit CLI.
 # Works for https as well, since everything is ssl-bumped below.
 {% if auth_token is defined and auth_token and (auth_token_domains | default([])) | length > 0 %}
 {% for domain in auth_token_domains %}
 acl contest_server dstdomain .{{ domain }}
 {% endfor %}
 acl has_auth_header req_header Authorization .+
-request_header_add Authorization "Bearer {{ auth_token }}" contest_server !has_auth_header
+request_header_add Authorization "Bearer {{ auth_token }}" contest_server !has_auth_header !domjudge_api
 {% endif %}
 
 coredump_dir /var/spool/squid
@@ -68,8 +80,3 @@ ssl_bump bump all
 # Ignore ssl errors, so we can still show our nice block page
 # And also because our block page has no good ssl certificate
 sslproxy_cert_error allow all
-
-{% for url in (squid_autologin_urls | default([])) %}
-acl autologin url_regex {{ url }}
-{% endfor %}
-include /etc/squid/autologin.conf

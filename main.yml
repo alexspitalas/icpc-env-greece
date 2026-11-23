@@ -195,7 +195,7 @@
       command: passwd -d contestant
 
     - name: update grub
-      command: /usr/sbin/update-grub
+      shell: /usr/sbin/update-grub && chmod 0400 /boot/grub/grub.cfg
 
     - name: restart squid
       service: name=squid state=restarted

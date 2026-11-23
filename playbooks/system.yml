@@ -56,6 +56,54 @@
     state: present
   notify: update grub
 
+# Lock GRUB menu editing ('e') and console ('c') with the icpcadmin password so a
+# contestant cannot reboot and append init=/bin/bash for a root shell, while keeping
+# normal unattended boot passwordless (--unrestricted on 10_linux + recovery disabled).
+- name: disable GRUB recovery mode menu entries
+  lineinfile:
+    dest: /etc/default/grub
+    regexp: '^#?GRUB_DISABLE_RECOVERY='
+    line: 'GRUB_DISABLE_RECOVERY="true"'
+    state: present
+  notify: update grub
+
+- name: allow unattended normal GRUB boot without password while locking edit/console
+  lineinfile:
+    dest: /etc/grub.d/10_linux
+    regexp: '^CLASS="--class gnu-linux --class gnu --class os'
+    line: 'CLASS="--class gnu-linux --class gnu --class os --unrestricted"'
+    state: present
+  notify: update grub
+
+- name: generate GRUB PBKDF2 password hash from icpcadmin_pass
+  shell: printf '%s\n%s\n' "$GRUB_PASS" "$GRUB_PASS" | grub-mkpasswd-pbkdf2 2>&1 | awk '/grub\.pbkdf2\./ {print $NF}'
+  environment:
+    GRUB_PASS: "{{ icpcadmin_pass }}"
+  register: grub_pbkdf2_hash
+  no_log: true
+  changed_when: false
+
+- name: verify GRUB PBKDF2 password hash was generated
+  assert:
+    that:
+      - grub_pbkdf2_hash.stdout | trim is match('^grub\.pbkdf2\.')
+    fail_msg: "Failed to generate GRUB PBKDF2 password hash via grub-mkpasswd-pbkdf2."
+
+- name: configure GRUB superuser password (icpcadmin)
+  copy:
+    dest: /etc/grub.d/01_icpc_password
+    owner: root
+    group: root
+    mode: '0700'
+    content: |
+      #!/bin/sh
+      cat <<'EOF'
+      set superusers="icpcadmin"
+      password_pbkdf2 icpcadmin {{ grub_pbkdf2_hash.stdout | trim }}
+      EOF
+  no_log: true
+  notify: update grub
+
 - name: tune vm dirty memory limits for usb flash drive stability
   when: sys_install_target == 'usb'
   copy:

@@ -278,7 +278,29 @@ def configure_print_team(w: Whiptail, force: bool = False):
         w.msgbox("Team name cannot be empty.")
 
 
-def configure_domjudge(w: Whiptail, force: bool = False):
+def inputbox_step(
+    w: Whiptail,
+    msg: str,
+    default: str = "",
+    password: bool = False,
+    cancel_label: str = "Cancel",
+):
+    control = "passwordbox" if password else "inputbox"
+    res = w.run(
+        control,
+        msg,
+        extra_args=["--cancel-button", cancel_label],
+        extra_values=[default],
+    )
+    return res.value, res.returncode
+
+
+def configure_domjudge(
+    w: Whiptail,
+    force: bool = False,
+    edit_existing: bool = False,
+    allow_url_edit: bool = True,
+):
     if not is_domjudge_enabled():
         return
 
@@ -287,11 +309,16 @@ def configure_domjudge(w: Whiptail, force: bool = False):
     url_valid = bool(parsed and parsed.scheme in ("http", "https") and parsed.hostname)
     existing_user, existing_pass = read_domjudge_credentials()
 
-    # Already configured and synced at the start of main(); nothing to do
-    if not force and url_valid and existing_user and existing_pass:
+    if not allow_url_edit and not url_valid:
+        w.title = "ICPC Setup - DOMjudge Configuration"
+        w.msgbox("DOMjudge URL is not configured.\n\nPlease ask an administrator to configure the server URL.")
         return
 
-    if force and url_valid and existing_user and existing_pass:
+    # Already configured and synced at the start of main(); nothing to do
+    if not force and not edit_existing and url_valid and existing_user and existing_pass:
+        return
+
+    if force and not edit_existing and url_valid and existing_user and existing_pass:
         w.title = "ICPC Setup - DOMjudge Configuration"
         if w.yesno(
             msg=f"DOMjudge credentials are already configured.\n\nURL: {url}\nTeam: {existing_user}\n\nKeep existing DOMjudge settings?",
@@ -300,55 +327,148 @@ def configure_domjudge(w: Whiptail, force: bool = False):
             return
 
     w.title = "ICPC Setup - DOMjudge Configuration"
-    username = existing_user or ""
-    prompt_url = (not url_valid) or force
+    url_input = url
+    # Never pre-populate or reveal previously saved credentials in contestant creds-only mode.
+    username = (existing_user or "") if allow_url_edit else ""
+    password = ""
+    show_password = False
+    can_edit_url = allow_url_edit and ((not url_valid) or force)
+    prompt_url = can_edit_url
+    if edit_existing and allow_url_edit and url_valid and existing_user and existing_pass:
+        password = existing_pass
+        step = "confirm"
+    else:
+        step = "url" if prompt_url else "user"
+    return_to_confirm = False
+
     while True:
-        if prompt_url:
-            entered_url, code = w.inputbox(
+        if step == "url":
+            cancel_label = "Back" if return_to_confirm else "Cancel"
+            entered_url, code = inputbox_step(
+                w,
                 msg="Enter the DOMjudge server URL (e.g. https://judge.example.com/):",
-                default=url,
+                default=url_input,
+                cancel_label=cancel_label,
             )
             if code != 0:
+                if return_to_confirm:
+                    url_input = url
+                    return_to_confirm = False
+                    step = "confirm"
+                    continue
                 return
-            entered_url = entered_url.strip()
+            entered_url = entered_url.replace("\r", "").replace("\n", "").strip()
             p = urlparse(entered_url) if entered_url else None
             if not p or p.scheme not in ("http", "https") or not p.hostname:
+                url_input = entered_url
                 w.msgbox("Please enter a valid http:// or https:// DOMjudge URL.")
                 continue
             url = entered_url
+            url_input = url
             url_valid = True
+            if return_to_confirm:
+                return_to_confirm = False
+                step = "confirm"
+            else:
+                step = "user"
 
-        entered_user, code = w.inputbox(
-            msg=f"DOMjudge URL: {url}\n\nEnter the DOMjudge team username:",
-            default=username,
-        )
-        if code != 0:
-            return
-        entered_user = entered_user.strip()
-        if not entered_user:
-            w.msgbox("Team username cannot be empty.")
-            continue
-        username = entered_user
+        elif step == "user":
+            can_back = return_to_confirm or prompt_url
+            cancel_label = "Back" if can_back else "Cancel"
+            hint = " (select Back to return)" if return_to_confirm else (" (select Back to edit URL)" if prompt_url else "")
+            entered_user, code = inputbox_step(
+                w,
+                msg=f"DOMjudge URL: {url}\n\nEnter the DOMjudge team username{hint}:",
+                default=username,
+                cancel_label=cancel_label,
+            )
+            if code != 0:
+                if return_to_confirm:
+                    return_to_confirm = False
+                    step = "confirm"
+                    continue
+                if prompt_url:
+                    url_input = url
+                    step = "url"
+                    continue
+                return
+            entered_user = entered_user.replace("\r", "").replace("\n", "").strip()
+            if not entered_user:
+                w.msgbox("Team username cannot be empty.")
+                continue
+            username = entered_user
+            if return_to_confirm:
+                return_to_confirm = False
+                step = "confirm"
+            else:
+                step = "pass"
 
-        entered_pass, code = w.inputbox(
-            msg=f"Enter the DOMjudge password for team '{username}':",
-            password=True,
-        )
-        if code != 0:
-            return
-        if not entered_pass:
-            w.msgbox("Team password cannot be empty.")
-            continue
-
-        if w.yesno(
-            msg=f"DOMjudge URL: {url}\nTeam Username: {username}\n\nSave these DOMjudge credentials?",
-            default="yes",
-        ):
+        elif step == "pass":
+            hint = "select Back to return" if return_to_confirm else "select Back to change username"
+            entered_pass, code = inputbox_step(
+                w,
+                msg=f"DOMjudge URL: {url}\nTeam Username: {username}\n\nEnter the DOMjudge password ({hint}):",
+                default=password if show_password else "",
+                password=not show_password,
+                cancel_label="Back",
+            )
+            if code != 0:
+                if return_to_confirm:
+                    return_to_confirm = False
+                    step = "confirm"
+                else:
+                    step = "user"
+                continue
+            entered_pass = entered_pass.replace("\r", "").replace("\n", "")
+            if not entered_pass:
+                w.msgbox("Team password cannot be empty.")
+                continue
             password = entered_pass
-            break
+            return_to_confirm = False
+            step = "confirm"
 
-    Path("/icpc/JUDGE_SYSTEM_URL").write_text(url + "\n", encoding="utf-8")
-    os.chmod("/icpc/JUDGE_SYSTEM_URL", 0o644)
+        elif step == "confirm":
+            pass_display = password if show_password else f"{'*' * len(password)} ({len(password)} chars)"
+            toggle_item = (
+                ("Hide Password", "Mask the password on screen")
+                if show_password
+                else ("Show Password", "Reveal the password on screen")
+            )
+            menu_items = [
+                ("Save & Continue", "Save these DOMjudge credentials"),
+                toggle_item,
+            ]
+            if can_edit_url:
+                menu_items.append(("Edit URL", "Change the DOMjudge server URL"))
+            menu_items.extend([
+                ("Edit Username", "Change the team username"),
+                ("Edit Password", "Change the team password"),
+                ("Cancel / Skip", "Exit without saving"),
+            ])
+            choice, code = w.menu(
+                msg=f"URL: {url}\nUsername: {username}\nPassword: {pass_display}\nConfirm or select an option:",
+                items=menu_items,
+            )
+            if code != 0 or not choice or choice == "Cancel / Skip":
+                return
+            if choice == "Save & Continue":
+                break
+            if choice in ("Show Password", "Hide Password"):
+                show_password = not show_password
+            elif choice == "Edit URL" and can_edit_url:
+                url_input = url
+                return_to_confirm = True
+                step = "url"
+            elif choice == "Edit Username":
+                return_to_confirm = True
+                step = "user"
+            elif choice == "Edit Password":
+                return_to_confirm = True
+                step = "pass"
+
+    if can_edit_url:
+        Path("/icpc/JUDGE_SYSTEM_URL").write_text(url + "\n", encoding="utf-8")
+        os.chmod("/icpc/JUDGE_SYSTEM_URL", 0o644)
 
     creds_path = Path("/icpc/domjudge_credentials")
     creds_path.write_text(
@@ -390,7 +510,21 @@ def main():
         print("Error: This script must be run as root!")
         sys.exit(1)
 
-    force = len(sys.argv) > 1 and sys.argv[1] in ("-f", "--force")
+    args = set(sys.argv[1:])
+    domjudge_only = "--domjudge-only" in args
+    domjudge_creds_only = "--domjudge-creds-only" in args
+    force = bool(args & {"-f", "--force"})
+
+    if domjudge_only or domjudge_creds_only:
+        w = Whiptail(title="ICPC Setup - DOMjudge Configuration")
+        set_network_backtitle(w, check_network())
+        configure_domjudge(
+            w,
+            force=True,
+            edit_existing=True,
+            allow_url_edit=not domjudge_creds_only,
+        )
+        return
 
     # Keep DOMjudge and printing configuration synced if already present
     if not needs_domjudge_setup():

@@ -68,6 +68,20 @@
   args:
     creates: /etc/squid/squidCA.crt
 
+- name: restrict squid CA private key permissions
+  file:
+    path: /etc/squid/squidCA.pem
+    owner: root
+    group: proxy
+    mode: '0640'
+
+- name: ensure squid CA public certificate is readable
+  file:
+    path: /etc/squid/squidCA.crt
+    owner: root
+    group: root
+    mode: '0644'
+
 - name: ensure that the squidCA is trusted by the system
   file:
     src: /etc/squid/squidCA.crt

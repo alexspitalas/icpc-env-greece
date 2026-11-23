@@ -11,15 +11,13 @@ if [[ $? == 0 ]]; then
     mkfs.vfat $DISK -n ICPC
 fi
 
-# BACKUP: Preserve important system/config files BEFORE deleting
+# BACKUP: Preserve system desktop entries before recreating the user
 echo "Backing up critical files..."
 
-# Backup JetBrains license
-if [[ -d /home/contestant/.config/JetBrains ]]; then
-    mkdir -p /root/.config
-    cp -r /home/contestant/.config/JetBrains /root/.config/
-    echo "✓ JetBrains config backed up"
-fi
+# Remove any legacy JetBrains backup under /root/.config (never back up user-controlled
+# ~/.config/JetBrains as root — CLion's clion.key is recreated at login by autostart and
+# IntelliJ defaults live in /etc/skel/.config/JetBrains).
+rm -rf /root/.config/JetBrains
 
 # Backup system desktop entries (in case they get deleted)
 if [[ -d /usr/share/applications ]]; then
@@ -37,10 +35,10 @@ userdel -f -r contestant 2>/dev/null || true
 rm -rf /home/contestant
 
 echo "Recreating contestant user"
-useradd -d /home/contestant -m contestant -G lpadmin -s /bin/bash
+useradd -d /home/contestant -m contestant -s /bin/bash
 passwd -d contestant
 
-# Restore DOMjudge ~/.netrc if DOMjudge credentials are saved (or clear autologin if removed)
+# Ensure DOMjudge Squid autologin/API auth stays synced (and no ~/.netrc exists)
 if [[ -x /icpc/scripts/domjudge_apply_creds ]]; then
     /icpc/scripts/domjudge_apply_creds --reload-squid
 fi
@@ -48,17 +46,8 @@ fi
 # RESTORE: Bring back important files
 echo "Restoring critical files..."
 
-# Restore JetBrains license
-if [[ -d /root/.config/JetBrains ]]; then
-    mkdir -p /home/contestant/.config
-    cp -r /root/.config/JetBrains /home/contestant/.config/
-    chown -R contestant:contestant /home/contestant/.config/JetBrains
-    chmod -R 0755 /home/contestant/.config/JetBrains  # Changed from 0600 to 0755
-    chmod 0644 /home/contestant/.config/JetBrains/CLion*/clion.key  # License file readable
-    echo "✓ JetBrains license restored with correct permissions"
-fi
-
-# Ensure .config has correct permissions
+# Ensure .config exists with correct permissions
+mkdir -p /home/contestant/.config
 chmod 0755 /home/contestant/.config
 chown contestant:contestant /home/contestant/.config
 

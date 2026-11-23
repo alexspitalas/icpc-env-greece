@@ -231,10 +231,19 @@
     - ['icpcadmin', 'root']
     - "{{ icpcadmin_ssh_keys | default([]) }}"
 
+- name: ensure the public build bootstrap key (imageadmin-ssh_key) is never authorized for root or icpcadmin
+  ansible.posix.authorized_key:
+    user: "{{ item }}"
+    state: absent
+    key: "{{ lookup('file', 'configs/imageadmin-ssh_key.pub') }}"
+  loop:
+    - root
+    - icpcadmin
+
 - name: create contestant group
   group: name='contestant' state='present'
 - name: create contestant user (with empty/blank password)
-  user: name='contestant' group='contestant' groups='lpadmin' password='$1$salty$lOyh/41oDtq.J4v0Lltp4.' shell='/bin/bash'
+  user: name='contestant' group='contestant' groups='' append=no password='$1$salty$lOyh/41oDtq.J4v0Lltp4.' shell='/bin/bash'
   notify:
       - clear user password
 
@@ -307,10 +316,11 @@
     name: openssh-server
     state: present
 
-- name: configure sshd to allow only ssh key authentication (disable passwords)
+- name: configure sshd to allow only ssh key authentication (disable passwords and root SSH login)
   copy:
     content: |
-      # Enforce SSH key-only authentication; disable password logins
+      # Enforce SSH key-only authentication; disable password and direct root logins (use icpcadmin + sudo)
+      PermitRootLogin no
       PasswordAuthentication no
       KbdInteractiveAuthentication no
       PubkeyAuthentication yes
@@ -359,16 +369,25 @@
 - name: disable proxy for icpcadmin
   copy: src=files/pam_environment dest=/home/icpcadmin/.pam_environment
 
-- name: ensure polkit local authority directory exists
+# Do not override owner/group/mode on /etc/polkit-1/rules.d so Ubuntu's
+# default root:polkitd (0750) package permissions are preserved.
+- name: ensure polkit rules.d directory exists
   file:
-    path: /etc/polkit-1/localauthority/50-local.d
+    path: /etc/polkit-1/rules.d
     state: directory
-    mode: '0755'
+
+- name: use polkit JS rule to disable mounting block devices on Ubuntu 24.04 (polkitd >= 124)
+  copy:
+    src: files/99-deny-polkit-mount.rules
+    dest: /etc/polkit-1/rules.d/99-deny-polkit-mount.rules
+    mode: '0644'
     owner: root
     group: root
-    
-- name: use polkit to disable mounting anything
-  copy: src=files/99-deny-polkit-mount.pkla dest=/etc/polkit-1/localauthority/50-local.d/disable-mount.pkla mode=0644 owner=root group=root
+
+- name: remove legacy polkit localauthority .pkla rule (ignored by Ubuntu 24.04 polkitd)
+  file:
+    path: /etc/polkit-1/localauthority/50-local.d/disable-mount.pkla
+    state: absent
 
 - name: create team reset group
   group: name='teamreset' state='present'
@@ -430,12 +449,20 @@
       # fullreset (passwordless greeter login) may ONLY start the full reset unit
       fullreset ALL=(root) NOPASSWD: /usr/bin/systemctl start --no-block icpc-full-reset.service
       # contestant can refresh the contest connection without a password
-      contestant ALL=(root) NOPASSWD: /icpc/scripts/refresh-contest-ip.sh
+      contestant ALL=(root) NOPASSWD: /icpc/scripts/refresh-contest-ip.sh ""
+      # contestant can update DOMjudge username/password (URL stays locked) without a password
+      contestant ALL=(root) NOPASSWD: /icpc/scripts/change-credentials.sh ""
 
 - name: symlink refresh-contest-ip to /usr/local/bin
   file:
     src: /icpc/scripts/refresh-contest-ip.sh
     dest: /usr/local/bin/refresh-contest-ip
+    state: link
+
+- name: symlink change-credentials to /usr/local/bin
+  file:
+    src: /icpc/scripts/change-credentials.sh
+    dest: /usr/local/bin/change-credentials
     state: link
 
 - name: set up firstboot configuration

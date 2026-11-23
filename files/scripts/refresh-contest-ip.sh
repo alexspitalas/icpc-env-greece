@@ -4,7 +4,7 @@
 
 # Auto-elevate via sudo if run by an unprivileged user (contestant has NOPASSWD for this script)
 if [ "$(id -u)" -ne 0 ]; then
-    exec sudo "$(readlink -f "$0")" "$@"
+    exec sudo "$(readlink -f "$0")"
 fi
 
 echo "=================================================="
