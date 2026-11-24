@@ -1,0 +1,10 @@
+[Unit]
+Description=ICPC full reset of team account and setup state, then reboot
+
+[Service]
+# Runs as root, detached from the fullreset login session, so closing the terminal,
+# pressing Ctrl+C or logging out can not interrupt the reset half way.
+# Not enabled: it is only started on demand (sudo systemctl start --no-block icpc-full-reset.service)
+Type=oneshot
+ExecStart=/icpc/scripts/full-reset-account
+TimeoutStartSec=0

@@ -1,0 +1,219 @@
+---
+# Optional Wireless (Wi-Fi) support for laptop installations.
+# Controlled by wireless_* variables in group_vars/all (see group_vars/all.dist).
+#
+# NOTE: Netplan and NetworkManager changes are written to disk for the next boot
+# without running `netplan apply` or restarting NetworkManager mid-build, so the
+# QEMU build VM's active SSH connection over eth0 is never disrupted.
+
+- name: record wireless enabled flag
+  copy:
+    dest: /icpc/WIRELESS_ENABLED
+    content: "{{ 'true' if (wireless_enabled | default(false) | bool) else 'false' }}\n"
+    owner: root
+    group: root
+    mode: '0644'
+
+- name: install and configure wireless networking (NetworkManager + nm-applet)
+  when: wireless_enabled | default(false) | bool
+  block:
+    - name: ensure Wi-Fi kernel modules are not blacklisted when wireless is enabled
+      file:
+        path: /etc/modprobe.d/blacklist-icpc-wifi.conf
+        state: absent
+    # Installed before changing 10-globally-managed-devices.conf so Ubuntu's default
+    # keeps eth0 unmanaged during the build VM session and SSH stays up.
+    # install_recommends: false + explicit policykit-1-gnome prevents network-manager-gnome
+    # from pulling in gnome-shell (first Depends alternative) and gnome-keyring (Recommends),
+    # which otherwise triggers "Choose password for new keyring" popups on autologin.
+    - name: install NetworkManager, XFCE tray applet, and wireless tools
+      apt:
+        state: present
+        install_recommends: false
+        pkg:
+          - network-manager
+          - network-manager-gnome
+          - policykit-1-gnome
+          - wpasupplicant
+          - iw
+          - wireless-regdb
+          - rfkill
+
+    - name: ensure NetworkManager conf.d directory exists
+      file:
+        path: /etc/NetworkManager/conf.d
+        state: directory
+        owner: root
+        group: root
+        mode: '0755'
+
+    - name: allow NetworkManager to manage both wired and wireless interfaces
+      copy:
+        dest: /etc/NetworkManager/conf.d/10-globally-managed-devices.conf
+        owner: root
+        group: root
+        mode: '0644'
+        content: |
+          # Managed by Ansible (playbooks/wireless.yml)
+          # Intentionally empty to shadow /usr/lib/NetworkManager/conf.d/10-globally-managed-devices.conf
+          # so both wired Ethernet and Wi-Fi interfaces are managed by NetworkManager.
+
+    - name: configure netplan to use NetworkManager renderer (wired + wireless)
+      copy:
+        dest: /etc/netplan/01-netcfg.yaml
+        owner: root
+        group: root
+        mode: '0600'
+        content: |
+          # Installed by ansible (wireless_enabled: true)
+          # This file describes the network interfaces available on your system
+          # For more information, see netplan(5).
+          network:
+            version: 2
+            renderer: NetworkManager
+            ethernets:
+              default:
+                match:
+                  name: e*
+                dhcp4: yes
+                dhcp-identifier: mac
+
+    - name: remove conflicting installer or legacy netplan files
+      file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - /etc/netplan/00-installer-config.yaml
+        - /etc/netplan/50-cloud-init.yaml
+        - /etc/netplan/50-wifi-config.yaml
+
+    - name: ensure NetworkManager system-connections directory exists
+      file:
+        path: /etc/NetworkManager/system-connections
+        state: directory
+        owner: root
+        group: root
+        mode: '0755'
+
+    - name: write pre-configured Wi-Fi connection profile when wireless_ssid is set
+      when: wireless_ssid | default('') | trim | length > 0
+      no_log: true
+      copy:
+        dest: /etc/NetworkManager/system-connections/icpc-wifi.nmconnection
+        owner: root
+        group: root
+        mode: '0600'
+        content: |
+          [connection]
+          id=ICPC-WiFi
+          uuid={{ ('icpc-wifi-' ~ (wireless_ssid | trim)) | to_uuid }}
+          type=wifi
+          autoconnect=true
+          autoconnect-priority=100
+
+          [wifi]
+          mode=infrastructure
+          ssid={{ wireless_ssid | trim }}
+          {% if wireless_hidden | default(false) | bool %}
+          hidden=true
+          {% endif %}
+          {% if (wireless_password | default('') | string | length) > 0 %}
+
+          [wifi-security]
+          key-mgmt=wpa-psk
+          psk={{ wireless_password | string }}
+          {% endif %}
+
+          [ipv4]
+          method=auto
+
+          [ipv6]
+          method=auto
+
+    - name: remove pre-configured Wi-Fi connection profile when wireless_ssid is unset
+      when: wireless_ssid | default('') | trim | length == 0
+      file:
+        path: /etc/NetworkManager/system-connections/icpc-wifi.nmconnection
+        state: absent
+
+    # Do not override owner/group/mode on /etc/polkit-1/rules.d so Ubuntu's
+    # default root:polkitd (0750) package permissions are preserved.
+    - name: ensure polkit rules.d directory exists
+      file:
+        path: /etc/polkit-1/rules.d
+        state: directory
+
+    - name: install NetworkManager polkit policy (contestant manage={{ wireless_contestant_manage | default(false) | bool }})
+      template:
+        src: files/50-icpc-networkmanager.rules.j2
+        dest: /etc/polkit-1/rules.d/50-icpc-networkmanager.rules
+        owner: root
+        group: root
+        mode: '0644'
+
+    - name: enable NetworkManager services for next boot
+      systemd:
+        name: "{{ item }}"
+        enabled: yes
+      loop:
+        - NetworkManager.service
+        - NetworkManager-wait-online.service
+
+    - name: disable systemd-networkd-wait-online so boot does not stall waiting for networkd
+      systemd:
+        name: systemd-networkd-wait-online.service
+        enabled: no
+      failed_when: false
+
+- name: keep wired-only networking when wireless is disabled
+  when: not (wireless_enabled | default(false) | bool)
+  block:
+    - name: omit/remove wireless and NetworkManager packages
+      apt:
+        state: absent
+        purge: yes
+        pkg:
+          - network-manager
+          - network-manager-gnome
+          - wpasupplicant
+          - iw
+
+    - name: remove wireless configuration artifacts if present
+      file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - /etc/NetworkManager/system-connections/icpc-wifi.nmconnection
+        - /etc/NetworkManager/conf.d/10-globally-managed-devices.conf
+        - /etc/polkit-1/rules.d/50-icpc-networkmanager.rules
+        - /etc/netplan/50-wifi-config.yaml
+
+    - name: push wired-only default netplan configuration (systemd-networkd)
+      copy:
+        src: files/01-netcfg.yaml
+        dest: /etc/netplan/01-netcfg.yaml
+        owner: root
+        group: root
+        mode: '0600'
+
+    - name: blacklist Wi-Fi kernel modules when wireless is disabled
+      copy:
+        dest: /etc/modprobe.d/blacklist-icpc-wifi.conf
+        owner: root
+        group: root
+        mode: '0644'
+        content: |
+          # Managed by Ansible (playbooks/wireless.yml, wireless_enabled: false)
+          blacklist cfg80211
+          blacklist mac80211
+          install cfg80211 /bin/true
+          install mac80211 /bin/true
+
+    - name: ensure systemd-networkd services are enabled
+      systemd:
+        name: "{{ item }}"
+        enabled: yes
+      failed_when: false
+      loop:
+        - systemd-networkd.service
+        - systemd-networkd-wait-online.service

@@ -1,9 +1,35 @@
 ---
-- name: install vmtouch
-  apt: pkg=vmtouch state=present
+- name: resolve effective install target for filesystem cache warming
+  set_fact:
+    vmtouch_install_target: "{{ effective_install_target | default(install_target | default('usb') | lower | trim) }}"
 
-- name: add init script so this runs on boot
-  copy: src=files/warm-fs-cache.service dest=/etc/systemd/system/warm-fs-cache.service
+- name: install vmtouch and enable warm-fs-cache service for USB boot
+  when: vmtouch_install_target == 'usb'
+  block:
+    - name: install vmtouch
+      apt: pkg=vmtouch state=present
 
-- name: enable warm-fs-cache service
-  service: name=warm-fs-cache enabled=yes
+    - name: add init script so this runs on boot
+      copy: src=files/warm-fs-cache.service dest=/etc/systemd/system/warm-fs-cache.service
+
+    - name: enable warm-fs-cache service
+      systemd:
+        name: warm-fs-cache
+        daemon_reload: yes
+        enabled: yes
+
+- name: disable warm-fs-cache service when installed directly on SSD
+  when: vmtouch_install_target == 'ssd'
+  block:
+    - name: check if warm-fs-cache service unit exists
+      stat:
+        path: /etc/systemd/system/warm-fs-cache.service
+      register: warm_fs_cache_unit
+
+    - name: disable warm-fs-cache service on SSD
+      when: warm_fs_cache_unit.stat.exists
+      systemd:
+        name: warm-fs-cache
+        daemon_reload: yes
+        enabled: no
+        state: stopped

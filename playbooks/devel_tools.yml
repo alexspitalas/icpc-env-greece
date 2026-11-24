@@ -18,6 +18,10 @@
     when: "'vscode' in devtools"
     include_tasks: 'devel_tools/vscode.yaml'
 
+  - name: install sublime-text
+    when: "('sublime' in devtools) or ('sublime-text' in devtools)"
+    include_tasks: 'devel_tools/sublime.yaml'
+
   - name: install netbeans
     when: "'netbeans' in devtools"
     include_tasks: 'devel_tools/netbeans.yaml'

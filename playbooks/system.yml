@@ -13,9 +13,6 @@
       - curl        # debugging connection things
       - ncdu
       - jq
-      # Needed for wifi
-      - wpasupplicant
-      - iw
 
 - name: disable udev persistent net generator
   file: state=link name=/etc/udev/rules.d/75-persistent-net-generator.rules src=/dev/null
@@ -24,18 +21,91 @@
 - name: disable "predictable network interface names"
   file: state=link name=/etc/udev/rules.d/80-net-setup-link.rules src=/dev/null
 
-- name: push a better default network interfaces file
-  copy: src=files/01-netcfg.yaml dest=/etc/netplan/01-netcfg.yaml
+- name: resolve and validate effective install target
+  set_fact:
+    sys_install_target: "{{ effective_install_target | default(install_target | default('usb') | lower | trim) }}"
 
-- name: disable console blanking and configure usb stability parameters
+- name: ensure sys_install_target is valid
+  assert:
+    that:
+      - sys_install_target in ['usb', 'ssd']
+    fail_msg: "Invalid install_target '{{ sys_install_target }}'. Expected 'usb' or 'ssd'."
+
+- name: record install target medium
+  copy:
+    dest: /icpc/INSTALL_TARGET
+    content: "{{ sys_install_target }}\n"
+    owner: root
+    group: root
+    mode: '0644'
+
+- name: set kernel command line parameters for target storage medium
+  set_fact:
+    icpc_grub_cmdline: >-
+      {{
+        'biosdevname=0 consoleblank=0 net.ifnames=0 '
+        ~ ('usbcore.autosuspend=-1 usbcore.lpm_disable=1 modprobe.blacklist=uas ' if sys_install_target == 'usb' else '')
+        ~ 'intel_iommu=off pcie_aspm=off nouveau.noaccel=1 i915.enable_psr=0'
+      }}
+
+- name: disable console blanking and configure storage and gpu stability parameters
   lineinfile:
     dest: /etc/default/grub
     regexp: "^GRUB_CMDLINE_LINUX_DEFAULT"
-    line: 'GRUB_CMDLINE_LINUX_DEFAULT="biosdevname=0 consoleblank=0 net.ifnames=0 usbcore.autosuspend=-1 usbcore.lpm_disable=1 modprobe.blacklist=uas"'
+    line: 'GRUB_CMDLINE_LINUX_DEFAULT="{{ icpc_grub_cmdline }}"'
     state: present
   notify: update grub
 
+# Lock GRUB menu editing ('e') and console ('c') with the icpcadmin password so a
+# contestant cannot reboot and append init=/bin/bash for a root shell, while keeping
+# normal unattended boot passwordless (--unrestricted on 10_linux + recovery disabled).
+- name: disable GRUB recovery mode menu entries
+  lineinfile:
+    dest: /etc/default/grub
+    regexp: '^#?GRUB_DISABLE_RECOVERY='
+    line: 'GRUB_DISABLE_RECOVERY="true"'
+    state: present
+  notify: update grub
+
+- name: allow unattended normal GRUB boot without password while locking edit/console
+  lineinfile:
+    dest: /etc/grub.d/10_linux
+    regexp: '^CLASS="--class gnu-linux --class gnu --class os'
+    line: 'CLASS="--class gnu-linux --class gnu --class os --unrestricted"'
+    state: present
+  notify: update grub
+
+- name: generate GRUB PBKDF2 password hash from icpcadmin_pass
+  shell: printf '%s\n%s\n' "$GRUB_PASS" "$GRUB_PASS" | grub-mkpasswd-pbkdf2 2>&1 | awk '/grub\.pbkdf2\./ {print $NF}'
+  environment:
+    GRUB_PASS: "{{ icpcadmin_pass }}"
+  register: grub_pbkdf2_hash
+  no_log: true
+  changed_when: false
+
+- name: verify GRUB PBKDF2 password hash was generated
+  assert:
+    that:
+      - grub_pbkdf2_hash.stdout | trim is match('^grub\.pbkdf2\.')
+    fail_msg: "Failed to generate GRUB PBKDF2 password hash via grub-mkpasswd-pbkdf2."
+
+- name: configure GRUB superuser password (icpcadmin)
+  copy:
+    dest: /etc/grub.d/01_icpc_password
+    owner: root
+    group: root
+    mode: '0700'
+    content: |
+      #!/bin/sh
+      cat <<'EOF'
+      set superusers="icpcadmin"
+      password_pbkdf2 icpcadmin {{ grub_pbkdf2_hash.stdout | trim }}
+      EOF
+  no_log: true
+  notify: update grub
+
 - name: tune vm dirty memory limits for usb flash drive stability
+  when: sys_install_target == 'usb'
   copy:
     dest: /etc/sysctl.d/99-usb-flush.conf
     content: |
@@ -43,15 +113,174 @@
       vm.dirty_background_bytes = 16777216
       vm.dirty_bytes = 50331648
 
+- name: remove usb dirty memory sysctl limits when installed on ssd
+  when: sys_install_target == 'ssd'
+  file:
+    path: /etc/sysctl.d/99-usb-flush.conf
+    state: absent
+
 - name: blacklist uas kernel module to enforce stable usb-storage mode
+  when: sys_install_target == 'usb'
   copy:
     dest: /etc/modprobe.d/blacklist-uas.conf
     content: |
       # Force standard usb-storage BOT driver to prevent UAS controller hangs
       blacklist uas
 
-- name: journald write to /dev/tty1
-  copy: src=files/systemd-journald.conf dest=/etc/systemd/journald.conf
+- name: remove uas kernel module blacklist when installed on ssd
+  when: sys_install_target == 'ssd'
+  file:
+    path: /etc/modprobe.d/blacklist-uas.conf
+    state: absent
+
+# On internal-SSD installs, block USB mass-storage drives (flash drives / external HDDs)
+# at the kernel module level so contestants cannot attach USB storage at all.
+# USB keyboards and mice use usbhid and remain unaffected. On USB-boot installs this
+# file is removed because the OS itself boots from usb-storage.
+- name: blacklist USB mass-storage kernel modules on ssd installs
+  when: sys_install_target == 'ssd'
+  copy:
+    dest: /etc/modprobe.d/blacklist-icpc-usb-storage.conf
+    owner: root
+    group: root
+    mode: '0644'
+    content: |
+      # Managed by Ansible (playbooks/system.yml, install_target: ssd)
+      # Disable external USB mass-storage devices on internal-SSD workstations
+      blacklist usb-storage
+      blacklist uas
+      install usb-storage /bin/true
+      install uas /bin/true
+  notify: update initramfs
+
+- name: ensure USB mass-storage is NOT blacklisted on usb-boot installs
+  when: sys_install_target == 'usb'
+  file:
+    path: /etc/modprobe.d/blacklist-icpc-usb-storage.conf
+    state: absent
+  notify: update initramfs
+
+# Block Bluetooth, smartphone USB tethering (Android RNDIS, iPhone ipheth), and
+# cellular/LTE/5G modems so contestants cannot attach a phone or BT tether to bypass
+# the contest network. Standard USB-Ethernet adapters (r8152, ax88179_178a, cdc_ether,
+# cdc_ncm) are intentionally left allowed for laptops without built-in RJ45 ports.
+- name: blacklist bluetooth, smartphone USB tethering, and cellular modem kernel modules
+  copy:
+    dest: /etc/modprobe.d/blacklist-icpc-net.conf
+    owner: root
+    group: root
+    mode: '0644'
+    content: |
+      # Managed by Ansible (playbooks/system.yml)
+      # Disable Bluetooth (PAN tethering / file transfer)
+      blacklist bluetooth
+      blacklist btusb
+      blacklist bnep
+      blacklist rfcomm
+      blacklist btintel
+      blacklist btrtl
+      blacklist btbcm
+      install bluetooth /bin/true
+      install btusb /bin/true
+      install bnep /bin/true
+      install rfcomm /bin/true
+      install btintel /bin/true
+      install btrtl /bin/true
+      install btbcm /bin/true
+
+      # Disable smartphone USB tethering and cellular/WWAN modems
+      blacklist ipheth
+      blacklist rndis_host
+      blacklist qmi_wwan
+      blacklist cdc_mbim
+      blacklist cdc_wdm
+      install ipheth /bin/true
+      install rndis_host /bin/true
+      install qmi_wwan /bin/true
+      install cdc_mbim /bin/true
+      install cdc_wdm /bin/true
+
+- name: check if fstrim.timer unit exists
+  command: systemctl list-unit-files fstrim.timer
+  register: fstrim_timer_check
+  failed_when: false
+  changed_when: false
+
+- name: configure periodic SSD TRIM (enabled on ssd, disabled on usb)
+  when: "'fstrim.timer' in (fstrim_timer_check.stdout | default(''))"
+  systemd:
+    name: fstrim.timer
+    enabled: "{{ sys_install_target == 'ssd' }}"
+    state: "{{ omit if sys_install_target == 'ssd' else 'stopped' }}"
+
+- name: journald write to /dev/tty1 (volatile on usb, size-capped persistent on ssd)
+  template:
+    src: files/systemd-journald.conf.j2
+    dest: /etc/systemd/journald.conf
+    owner: root
+    group: root
+    mode: '0644'
+  notify: restart systemd-journald
+
+# On USB installs the journal is volatile (RAM only), but rsyslog would still write
+# /var/log/syslog, kern.log, auth.log... to the flash drive with no size cap. On the
+# SEERC 2026 image this (plus a noisy boot service) filled the root filesystem and
+# broke VS Code for contestants. Nothing in this image reads those files, so on USB
+# rsyslog is stopped and masked; `journalctl` (RAM) still has everything since boot.
+- name: check if rsyslog unit exists
+  command: systemctl list-unit-files rsyslog.service
+  register: rsyslog_unit_check
+  failed_when: false
+  changed_when: false
+
+# Stop/mask syslog.socket first (it is a static unit with no [Install] section),
+# then disable+stop rsyslog BEFORE masking it (Ansible runs mask before disable if
+# both are in the same task, which would skip removing the wants symlink).
+- name: stop and mask syslog.socket on usb (it only exists to activate rsyslog)
+  when: sys_install_target == 'usb'
+  systemd:
+    name: syslog.socket
+    state: stopped
+    masked: yes
+  failed_when: false
+
+- name: stop and disable rsyslog on usb (before masking so wants symlinks are cleaned up)
+  when:
+    - sys_install_target == 'usb'
+    - "'rsyslog.service' in (rsyslog_unit_check.stdout | default(''))"
+    - "'masked' not in (rsyslog_unit_check.stdout | default(''))"
+  systemd:
+    name: rsyslog
+    state: stopped
+    enabled: no
+
+- name: mask rsyslog on usb (avoid unbounded /var/log growth on the flash drive)
+  when:
+    - sys_install_target == 'usb'
+    - "'rsyslog.service' in (rsyslog_unit_check.stdout | default(''))"
+  systemd:
+    name: rsyslog
+    state: stopped
+    masked: yes
+
+- name: unmask syslog.socket on ssd
+  when: sys_install_target == 'ssd'
+  systemd:
+    name: syslog.socket
+    masked: no
+    daemon_reload: yes
+  failed_when: false
+
+- name: re-enable rsyslog on ssd
+  when:
+    - sys_install_target == 'ssd'
+    - "'rsyslog.service' in (rsyslog_unit_check.stdout | default(''))"
+  systemd:
+    name: rsyslog
+    masked: no
+    enabled: yes
+    daemon_reload: yes
+    state: started
 
 - name: systemd disable status messages on console
   copy: src=files/systemd-system.conf dest=/etc/systemd/system.conf
@@ -64,12 +293,41 @@
       APT::Periodic::Update-Package-Lists "0";
       APT::Periodic::Unattended-Upgrade "0";
 
+- name: build effective firefox policies (add DOMjudge bookmark if enabled and missing)
+  set_fact:
+    effective_firefox_policies: >-
+      {%- set base = firefox_default_policies | combine(firefox_policies) -%}
+      {%- set bookmarks = base.Bookmarks | default([]) -%}
+      {%- set has_dj = bookmarks | selectattr('Title', 'defined') | selectattr('Title', 'match', '(?i)^domjudge$') | list | length > 0 -%}
+      {%- if (domjudge_enabled | default(false)) and (judge_system_url | default('') | trim | length > 0) and (not has_dj) -%}
+        {{ base | combine({'Bookmarks': bookmarks + [{'Title': 'DOMjudge', 'URL': (judge_system_url | trim), 'Placement': 'toolbar'}]}) }}
+      {%- else -%}
+        {{ base }}
+      {%- endif -%}
+
+- name: ensure firefox policies directories exist
+  file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+  loop:
+    - /etc/firefox/policies
+    - /usr/lib/firefox/distribution
+
 - name: Configure firefox policies (trust squid cert, homepage/bookmarks/etc)
   copy:
-    dest: /usr/lib/firefox/distribution/policies.json
+    dest: "{{ item }}"
+    owner: root
+    group: root
+    mode: '0644'
     content: |
       {
         "policies":
-        {{ firefox_default_policies|combine(firefox_policies)|to_nice_json }}
+        {{ effective_firefox_policies|to_nice_json }}
       }
+  loop:
+    - /etc/firefox/policies/policies.json
+    - /usr/lib/firefox/distribution/policies.json
 

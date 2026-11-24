@@ -1,0 +1,16 @@
+// Managed by Ansible (playbooks/icpc.yml)
+// Block contestant and passwordless reset accounts from mounting, unmounting,
+// or modifying block devices via udisks2 (USB sticks, internal OS drives, etc.).
+polkit.addRule(function(action, subject) {
+    if (action.id.indexOf("org.freedesktop.udisks2.") !== 0) {
+        return;
+    }
+
+    if (subject.user === "icpcadmin" || subject.isInGroup("sudo")) {
+        return polkit.Result.YES;
+    }
+
+    if (subject.user === "contestant" || subject.user === "teamreset" || subject.user === "fullreset") {
+        return polkit.Result.NO;
+    }
+});

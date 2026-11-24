@@ -1,12 +1,14 @@
 server_names_hash_bucket_size 128;
-resolver 8.8.8.8 ipv6=off;
 
 server {
-  listen 80 default_server;
-  listen 443 ssl default_server;
+  listen 127.0.0.1:80 default_server;
+  listen [::1]:80 default_server;
+  listen 127.0.0.1:443 ssl default_server;
+  listen [::1]:443 ssl default_server;
   server_name _;
   ssl_certificate /etc/ssl/reverseproxy.cert;
   ssl_certificate_key /etc/ssl/reverseproxy.key;
 
   root /opt/localwww;
+  index index.html;
 }

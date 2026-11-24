@@ -53,33 +53,63 @@ function check_service() {
 }
 
 echo "${BLUE}System Configuration${RESET}"
-print_check "Contest ID"
-CONTESTID="$(cat /icpc/CONTEST 2>/dev/null)"
-NOTEAM="${RED}Not Set${RESET}"
-CONTESTID="${CONTESTID:-$NOTEAM}"
-echo $CONTESTID
+CONTESTID="$(cat /icpc/DOMJUDGE_CONTEST /icpc/CONTEST 2>/dev/null | head -n1)"
+if [ -n "$CONTESTID" ] && [ "$CONTESTID" != "demo" ]; then
+  print_check "Contest ID"
+  echo "$CONTESTID"
+fi
 
-print_check "Team ID"
-TEAMNAME="$(cat /icpc/TEAM 2>/dev/null)"
-NOTEAM="${RED}Not Set${RESET}"
-TEAMNAME="${TEAMNAME:-$NOTEAM}"
-echo $TEAMNAME
+TEAMNAME="$(cat /icpc/TEAM /icpc/PRINT_TEAM 2>/dev/null | head -n1)"
+if [ -n "$TEAMNAME" ] && [ "$TEAMNAME" != "default team" ] && [ "$TEAMNAME" != "demo team" ]; then
+  print_check "Team"
+  echo "$TEAMNAME"
+fi
 
-print_check "Site ID"
-SITENAME="$(cat /icpc/SITE 2>/dev/null)"
-NOSITE="${RED}Not Set${RESET}"
-SITENAME="${SITENAME:-$NOSITE}"
-echo $SITENAME
+INSTALL_TARGET_VAL="$(cat /icpc/INSTALL_TARGET 2>/dev/null)"
+if [ -n "$INSTALL_TARGET_VAL" ]; then
+  print_check "Install Target"
+  echo "$INSTALL_TARGET_VAL"
+fi
 
-# only check domjudge autologin if there are autologin urls defined
-if grep -q 'acl autologin url_regex' /etc/squid/squid.conf ; then
+WIRELESS_ENABLED_VAL="$(cat /icpc/WIRELESS_ENABLED 2>/dev/null)"
+if [ -n "$WIRELESS_ENABLED_VAL" ]; then
+  print_check "Wireless (Wi-Fi) Support"
+  if [ "$WIRELESS_ENABLED_VAL" = "true" ]; then
+    echo "${GREEN}Enabled${RESET}"
+    ACTIVE_WIFI_SSID="$(nmcli -t -f active,ssid dev wifi 2>/dev/null | awk -F: '$1=="yes"{sub(/^[^:]+:/,""); print; exit}')"
+    if [ -n "$ACTIVE_WIFI_SSID" ]; then
+      print_check "    Active Wi-Fi SSID"
+      echo "$ACTIVE_WIFI_SSID"
+    fi
+  else
+    echo "Disabled (wired only)"
+  fi
+fi
+
+# check DOMjudge configuration if enabled or autologin urls are defined
+DOMJUDGE_ENABLED=$(cat /icpc/DOMJUDGE_ENABLED 2>/dev/null)
+if [ "$DOMJUDGE_ENABLED" = "true" ] || grep -q 'acl autologin url_regex' /etc/squid/squid.conf ; then
+  print_check "DOMjudge Enabled"
+  echo "${GREEN}Yes${RESET}"
+
+  print_check "DOMjudge URL"
+  DJURL="$(cat /icpc/JUDGE_SYSTEM_URL 2>/dev/null)"
+  echo "${DJURL:-${RED}Not Set${RESET}}"
+
+  print_check "DOMjudge Submit Client"
+  if [ -x /usr/local/bin/submit ] && grep -q 'domjudge_api' /etc/squid/autologin.conf 2>/dev/null; then
+    print_ok
+  else
+    print_fail
+  fi
+
   print_check "DOMjudge Autologin Configured"
   cat /etc/squid/autologin.conf 2>/dev/null | grep "X-DOMjudge" > /dev/null
   if [ $? -eq 0 ]; then
     echo "${GREEN}Yes${RESET}"
     print_check "    Team Login"
-    DJTEAM=$(cat /etc/squid/autologin.conf | awk '/X-DOMjudge-Login/{print $3}' | tr -d '"')
-    echo $DJTEAM
+    DJTEAM=$(sed -n 's/^request_header_add X-DOMjudge-Login "\(.*\)" autologin$/\1/p' /etc/squid/autologin.conf 2>/dev/null)
+    echo "$DJTEAM"
   else
     echo "${ORANGE}No${RESET}"
   fi
@@ -87,18 +117,64 @@ fi
 
 echo
 echo "${BLUE}Printing Configuration${RESET}"
-print_check "Making sure cups is running"
-check_service 'cups'
-PRINTERS=$(lpstat -v 2>/dev/null| grep -v ContestPrinter | sed -e 's|socket://||' -e 's|:||' | awk '{printf "    %-56s%s\n", $3, $4}')
-NUMPRINTERS=$(echo -n "$PRINTERS" | grep -c Printer)
-print_check "Checking there are printers present"
-if [ "$NUMPRINTERS" -eq "0" ]; then
-  print_fail
-else
-  print_ok
+PRINT_MODE_VAL="$(tr -d '[:space:]' < /icpc/PRINT_MODE 2>/dev/null | tr '[:upper:]' '[:lower:]')"
+if [ -n "$PRINT_MODE_VAL" ]; then
+  print_check "Print Mode"
+  echo "$PRINT_MODE_VAL"
 fi
-echo "Configured Printers:"
-echo "$PRINTERS"
+PRINT_TEAM_VAL="$(cat /icpc/PRINT_TEAM 2>/dev/null)"
+if [ -n "$PRINT_TEAM_VAL" ]; then
+  print_check "Print Team Header"
+  echo "$PRINT_TEAM_VAL"
+fi
+case "$PRINT_MODE_VAL" in
+  domjudge)
+    print_check "Printing via DOMjudge API"
+    if [ -x /usr/local/bin/submit ] && grep -q 'domjudge_api' /etc/squid/autologin.conf 2>/dev/null; then
+      print_ok
+    else
+      print_fail
+    fi
+    ;;
+  http)
+    HTTP_PRINT_URL="$(cat /icpc/PRINT_SERVER_URL 2>/dev/null)"
+    if [ -z "$HTTP_PRINT_URL" ]; then
+      HTTP_PRINT_IP="$(cat /icpc/PRINT_SERVER_IP 2>/dev/null)"
+      if [ -n "$HTTP_PRINT_IP" ]; then
+        HTTP_PRINT_URL="http://${HTTP_PRINT_IP}/print"
+      fi
+    fi
+    print_check "HTTP Print Server"
+    if [ -n "$HTTP_PRINT_URL" ]; then
+      echo "$HTTP_PRINT_URL"
+    else
+      print_fail
+    fi
+    ;;
+  cups)
+    CUPS_SERVER_VAL="$(awk '/^ServerName/{print $2}' /etc/cups/client.conf 2>/dev/null)"
+    print_check "Remote CUPS Server"
+    if [ -n "$CUPS_SERVER_VAL" ]; then
+      echo "$CUPS_SERVER_VAL"
+    else
+      print_fail
+    fi
+    ;;
+  *)
+    print_check "Making sure cups is running"
+    check_service 'cups'
+    PRINTERS=$(lpstat -v 2>/dev/null | sed -e 's|socket://||' -e 's|:||' | awk '{printf "    %-56s%s\n", $3, $4}')
+    NUMPRINTERS=$(echo -n "$PRINTERS" | grep -cE '(Printer|ContestPrinter)')
+    print_check "Checking there are printers present"
+    if [ "$NUMPRINTERS" -eq "0" ]; then
+      print_fail
+    else
+      print_ok
+    fi
+    echo "Configured Printers:"
+    echo "$PRINTERS"
+    ;;
+esac
 
 echo
 echo "${BLUE}Connectivity Test${RESET}"
@@ -106,40 +182,139 @@ print_check "Checking if the firewall is enabled"
 ufw status 2>&1 | grep 'Status: active' >/dev/null
 check_return $?
 
-
+# On first boot squid may still be starting; give it a few seconds before testing through it
+if ! systemctl is-active --quiet squid; then
+  for _ in 1 2 3 4 5 6 7 8 9 10; do
+    sleep 1
+    systemctl is-active --quiet squid && break
+  done
+fi
 print_check "Making sure the squid proxy is running"
 check_service 'squid'
 
-print_check "Testing access to google is blocked with a proxy error"
-curl -s --proxy http://127.0.0.1:3128 http://google.com 2>/dev/null | grep "<h1>Access Denied</h1>" > /dev/null
+if [ "$WIRELESS_ENABLED_VAL" = "true" ]; then
+  print_check "Making sure NetworkManager is running"
+  check_service 'NetworkManager'
+else
+  print_check "Making sure systemd-networkd is running"
+  check_service 'systemd-networkd'
+fi
+
+print_check "Checking active network route"
+ip -4 route show default 2>/dev/null | grep -q 'default' || ip -6 route show default 2>/dev/null | grep -q 'default'
 check_return $?
 
-while IFS="" read -r url ; do
-  [ -z "$url" ] && continue
-  print_check "Testing access to $url is successful with proxy"
-  # wget -e use_proxy=yes -T 5 -t 1 -e http_proxy=127.0.0.1:3128 -e https_proxy=127.0.0.1:3128 -O- --no-check-certificate $url 2>/dev/null | grep -i "html" > /dev/null
-  curl --proxy http://127.0.0.1:3128 --connect-timeout 5 --max-time 10 --silent -o /dev/null --fail $url
-  check_return $?
-  break # only check one url from the list
-done < /icpc/config_homepage
+if [ -f /etc/systemd/system/node_exporter.service ]; then
+  print_check "Making sure node_exporter is running"
+  check_service 'node_exporter'
+fi
+
+print_check "Testing access to google is blocked with a proxy error"
+curl -s -m 8 --proxy http://127.0.0.1:3128 http://google.com 2>/dev/null | grep "<h1>Access Denied</h1>" > /dev/null
+check_return $?
+
+# --- Reachability of the judge system and allowed domains through squid ---
+# All checks run in parallel, so the total wait is bounded by a single curl timeout
+# instead of adding up one timeout per (unreachable) site.
+
+# Prints the HTTP status code (000 on failure). Note: with -w, curl already prints 000
+# itself on failure, so do NOT append `|| echo 000` (that would yield "000000").
+proxy_http_code() {
+  local code
+  code=$(curl -s -o /dev/null -w "%{http_code}" --connect-timeout 4 -m 6 -x http://127.0.0.1:3128 "$1" 2>/dev/null)
+  echo "${code:-000}"
+}
+http_ok() {
+  case "$1" in
+    ""|000|403|502|503|504) return 1 ;;
+    *) return 0 ;;
+  esac
+}
+# $1 = result file, $2 = label, $3 = url
+check_url_to_file() {
+  printf '%s\n%s\n' "$2" "$(proxy_http_code "$3")" > "$1"
+}
+# $1 = result file, $2 = domain (contest servers: try :8050 first, then fall back to :80)
+check_domain_to_file() {
+  local domain="$2" display code fallback
+  if [ "$domain" = "grcpc.gr" ] || [ "$domain" = "150.140.142.30" ]; then
+    display="http://$domain:8050"
+    code=$(proxy_http_code "$display/")
+    if ! http_ok "$code"; then
+      fallback=$(proxy_http_code "http://$domain/")
+      if http_ok "$fallback"; then
+        code="$fallback"
+        display="http://$domain"
+      fi
+    fi
+  else
+    display="http://$domain"
+    code=$(proxy_http_code "$display/")
+  fi
+  printf '%s\n%s\n' "Testing access to $display with proxy" "$code" > "$1"
+}
+
+CONN_TMP=$(mktemp -d)
+CONN_COUNT=0
+
+if [ -s /icpc/JUDGE_SYSTEM_URL ]; then
+  DJURL="$(cat /icpc/JUDGE_SYSTEM_URL 2>/dev/null)"
+  if [ "$DOMJUDGE_ENABLED" = "true" ]; then
+    DJLABEL="Testing access to DOMjudge ($DJURL) with proxy"
+  else
+    DJLABEL="Testing access to Judge System ($DJURL) with proxy"
+  fi
+  check_url_to_file "$CONN_TMP/$CONN_COUNT" "$DJLABEL" "$DJURL" &
+  CONN_COUNT=$((CONN_COUNT + 1))
+fi
+
+if [ -f /etc/squid/acl_allowed_domains.txt ]; then
+  while IFS= read -r line; do
+    domain="$(printf '%s' "${line%%#*}" | tr -d '[:space:]')"
+    domain="${domain#.}"
+    [ -z "$domain" ] && continue
+    check_domain_to_file "$CONN_TMP/$CONN_COUNT" "$domain" &
+    CONN_COUNT=$((CONN_COUNT + 1))
+  done < /etc/squid/acl_allowed_domains.txt
+fi
+
+wait
+
+for ((i = 0; i < CONN_COUNT; i++)); do
+  [ -f "$CONN_TMP/$i" ] || continue
+  { IFS= read -r label; IFS= read -r code; } < "$CONN_TMP/$i"
+  print_check "$label"
+  if http_ok "$code"; then
+    print_ok
+  else
+    print_fail
+  fi
+done
+rm -rf "$CONN_TMP"
 
 print_check "Testing direct internet access is disabled"
-su - contestant -c 'curl --noproxy "*" --connect-timeout 5 --max-time 10 --silent --fail -o /dev/null http://google.com' 2>/dev/null
+su - contestant -c 'curl --noproxy "*" --connect-timeout 3 --max-time 5 --silent --fail -o /dev/null http://google.com' 2>/dev/null
 if [ $? -eq 0 ]; then
   print_fail
 else
   print_ok
 fi
 
-#if [ -f /usr/local/bin/wg_setup ]; then
-#  print_check "Checking if the management VPN is alive"
-#  ping -c1 contestmanager.icpcnet.internal >/dev/null 2>&1
-#  check_return $?
-#fi
+if command -v resolvectl >/dev/null 2>&1; then
+  print_check "Testing direct DNS resolution as contestant is disabled"
+  su - contestant -c 'resolvectl query google.com' >/dev/null 2>&1
+  if [ $? -eq 0 ]; then
+    print_fail
+  else
+    print_ok
+  fi
+fi
 
 echo
 echo "${BLUE}Compiler Versions${RESET}"
-ERLANG_VERSION_OUT=$(erl -eval '{ok, Version} = file:read_file(filename:join([code:root_dir(), "releases", erlang:system_info(otp_release), "OTP_VERSION"])), io:fwrite(Version), halt().' -noshell 2>/dev/null)
+if language_supported "erlang"; then
+  ERLANG_VERSION_OUT=$(erl -eval '{ok, Version} = file:read_file(filename:join([code:root_dir(), "releases", erlang:system_info(otp_release), "OTP_VERSION"])), io:fwrite(Version), halt().' -noshell 2>/dev/null)
+fi
 print_version       "ada"       "gnat --version"
 print_version       "c"         "gcc --version"
 print_version       "cpp"       "g++ --version" "c++"
@@ -173,5 +348,5 @@ print_version       "scala"     "scala -version"
 echo
 echo "${BLUE}Image Details${RESET}"
 VERSIONINFO=$(cat /icpc/version 2>/dev/null)
-VERSIONDEFAULT="${RED}No version info found!${DEFAULT}"
+VERSIONDEFAULT="${RED}No version info found!${RESET}"
 echo -e "${VERSIONINFO:-$VERSIONDEFAULT}"

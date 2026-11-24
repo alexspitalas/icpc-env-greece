@@ -1,78 +1,59 @@
-#!/usr/bin/python3
+#!/usr/bin/env python3
 
-#usage: pcpr North.java
-#usage: pcpr --output=files.ps *.java
-#usage: pcpr -P printer *.cpp
-#usage: pcpr --portrait -1 North.hs     [ For those with difficulty with the small print.]
+# usage: pcpr North.java
+# usage: pcpr --output=files.ps *.java
+# usage: pcpr -P printer *.cpp
+# usage: pcpr --portrait -1 North.hs     [ For those with difficulty with the small print.]
 
-#This script is intended for use at ACM SER 2008 ICPC; it ensures a proper header/footer:
-#
-#   1)  file name
-#   2)  page i of n
-#   3)  time of job
-#   4)  Unix "user"   ("ubuntu", possibly)
-#   5)  Contents of the files /ACM/SITE /ACM/TEAM
-#   6)  Hostname
-#   7)  Mac address
-#
-
-#  Verify /usr/bin/enscript permissions.  chmod go+rx /usr/bin/enscript
-#  Verify this script's permissions.      chomd go+rx /scripts/pcpr
-
-#  This script uses "enscript" to print to the default printer (by default).  Verify
-#  that a default printer has been configured; cf "lpstat -p -d"
-
-# CUPS supports "PostScript" on all printers (where they have it or not).
-# If the printer is a PostScript printer you need the PostScript Printer Description PPD
-# file that comes with your printer.
-
-
-#The header is easily spoofed if the user has access to "enscript".
-#Maybe sudo can be used to make it more secure.
-#
-# edit /etc/sudoers with visudo
-#
-# ubuntu ALL=NOPASSWD:/usr/bin/enscript
-
-import sys
 import os
+from pathlib import Path
+import socket
 import subprocess
+import sys
 
 
-sitefile = "/icpc/SITE"
-teamfile = "/icpc/TEAM"
-user = os.environ["USER"]
-#host = os.environ["HOSTNAME"]
+def read_text(path: str) -> str:
+    try:
+        return Path(path).read_text(encoding="utf-8").strip()
+    except OSError:
+        return ""
 
-if os.path.exists(sitefile):
-    site = subprocess.getoutput("cat " + teamfile)
-else:
-    site = "[none]"
 
-if os.path.exists(teamfile):
-    team = subprocess.getoutput("cat " + teamfile)
-else:
-    team = "[none]"
+def resolve_team_name() -> str:
+    print_team = read_text("/icpc/PRINT_TEAM")
+    if print_team:
+        return print_team
 
-netDevice = subprocess.getoutput("ip route show default | awk '/default/ {print $5}'")
-macAddress = subprocess.getoutput("cat /sys/class/net/" + netDevice + "/address")
-hostname = subprocess.getoutput("hostname")
+    teamname = read_text("/icpc/TEAMNAME")
+    if teamname and teamname not in ("demo team", "default team"):
+        return teamname
 
-# -MLetter  we assume US printers and generate letter size pages and not A4 pages
-options = [
-    "-MLetter",
-    "-2",
-    "--landscape",
-    "--pretty-print"
-]
+    team = read_text("/icpc/TEAM")
+    if team and team != "default team" and not team.startswith("000 - demo team"):
+        return team
 
-# The header is too wide, but footers are a pain
-header = "$n; page $% of $=; time=$C; user=$(USER); site=" + site + "; team=" + team + "; host=" + hostname + "; mac=" + macAddress
-header = "$n; page $% of $=; team=" + team + "; mac=" + macAddress
-header = "$n; page $% of $=; team=" + team
+    return socket.gethostname()
 
-# Though I encourage just one argument (the name of one file);
-# all command line arguments are tacked on at the end
-os.system("/usr/bin/enscript", **options, f'--header={header}', **sys.argv[1:])
 
-# PS.  Using footers would be nice, but that would require writing enscript *.hdr files.
+def main():
+    if len(sys.argv) < 2:
+        print("Usage: pcpr [enscript options] <file>...", file=sys.stderr)
+        sys.exit(1)
+
+    team = resolve_team_name()
+
+    # -MLetter generates letter size pages
+    options = [
+        "-MLetter",
+        "-2",
+        "--landscape",
+        "--pretty-print",
+    ]
+
+    header = f"$n; page $% of $=; team={team}"
+    res = subprocess.run(["/usr/bin/enscript", *options, f"--header={header}", *sys.argv[1:]], check=False)
+    sys.exit(res.returncode)
+
+
+if __name__ == "__main__":
+    main()

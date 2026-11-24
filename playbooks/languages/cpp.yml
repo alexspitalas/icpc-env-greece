@@ -1,17 +1,25 @@
 ---
-# Add G++ 14 repository for ICPC 2025 compliance
+# Ubuntu 24.04 (Noble) ships g++-14 natively in the official universe repository.
+# Remove any legacy Launchpad PPA source files left over from earlier builds so
+# apt never depends on ppa.launchpadcontent.net.
+- name: find legacy ubuntu-toolchain-r PPA source files
+  find:
+    paths: /etc/apt/sources.list.d
+    patterns: "*ubuntu-toolchain-r*"
+  register: toolchain_ppa_files
+
+- name: remove legacy ubuntu-toolchain-r PPA source files
+  file:
+    path: "{{ item.path }}"
+    state: absent
+  loop: "{{ toolchain_ppa_files.files }}"
+
 - name: enable universe repository
   command: add-apt-repository -y universe
   become: yes
 
 - name: update apt cache
   apt:
-    update_cache: yes
-
-- name: add gcc-14 repository
-  apt_repository:
-    repo: ppa:ubuntu-toolchain-r/test
-    state: present
     update_cache: yes
 
 - name: cpp
@@ -31,28 +39,110 @@
     priority: 100
 
 # From https://en.cppreference.com/w/Cppreference:Archives
+# (offline HTML book from https://github.com/PeterFeicht/cppreference-doc/releases,
+# packed into a ~10MB zstd SquashFS image instead of ~355MB of loose HTML files)
 - name: create directories
   file:
     state: directory
     path: "{{ item }}"
+    mode: '0755'
   with_items:
     - /opt/cpp-docs
     - /opt/libc-manual
 
-- name: cpp reference docs 
+- name: check if /opt/cppreference is already mounted
+  command: mountpoint -q /opt/cppreference
+  register: cppref_is_mounted
+  failed_when: false
+  changed_when: false
+
+- name: create /opt/cppreference mountpoint directory when not yet mounted
+  when: cppref_is_mounted.rc != 0
+  file:
+    state: directory
+    path: /opt/cppreference
+    mode: '0755'
+
+- name: check if local cppreference SquashFS image exists in files/
+  stat:
+    path: files/cppreference-20250209.sqsh
+  delegate_to: 127.0.0.1
+  become: false
+  register: cppref_local_sqsh
+
+- name: build files/cppreference-20250209.sqsh on the build host if missing
+  when: not cppref_local_sqsh.stat.exists
+  delegate_to: 127.0.0.1
+  become: false
+  shell: |
+    set -euo pipefail
+    command -v mksquashfs >/dev/null 2>&1 || {
+      echo "mksquashfs is required on the build host (install squashfs-tools) to build files/cppreference-20250209.sqsh" >&2
+      exit 1
+    }
+    tmpd=$(mktemp -d)
+    trap 'rm -rf "$tmpd"' EXIT
+    curl -fL -o "$tmpd/html-book-20250209.tar.xz" \
+      https://github.com/PeterFeicht/cppreference-doc/releases/download/v20250209/html-book-20250209.tar.xz
+    tar -xJf "$tmpd/html-book-20250209.tar.xz" -C "$tmpd" reference
+    chmod -R u+rwX,go+rX,go-w "$tmpd/reference"
+    mksquashfs "$tmpd/reference" "$tmpd/cppreference-20250209.sqsh" \
+      -comp zstd -Xcompression-level 19 -b 1M -no-progress -quiet -all-root -noappend
+    mv -f "$tmpd/cppreference-20250209.sqsh" "{{ playbook_dir }}/files/cppreference-20250209.sqsh"
+  args:
+    executable: /bin/bash
+
+- name: remove legacy uncompressed /opt/cppreference contents before mounting SquashFS
+  when: cppref_is_mounted.rc != 0
+  file:
+    path: /opt/cppreference/reference
+    state: absent
+
+- name: copy pre-built offline cppreference SquashFS image (~10MB) into the contestant image
+  copy:
+    src: files/cppreference-20250209.sqsh
+    dest: /opt/cppreference.sqsh
+    owner: root
+    group: root
+    mode: '0644'
+
+- name: mount offline cppreference SquashFS image read-only
+  mount:
+    path: /opt/cppreference
+    src: /opt/cppreference.sqsh
+    fstype: squashfs
+    opts: loop,ro,nodev,nosuid,noexec,nofail
+    state: mounted
+
+- name: cpp reference docs
   command: curl -o /opt/cpp-docs/tutorial.pdf https://cplusplus.com/files/tutorial.pdf
+  args:
+    creates: /opt/cpp-docs/tutorial.pdf
 
 - name: libc reference docs
   unarchive:
     src: https://snapshots.sourceware.org/glibc/trunk/latest/manual/libc-html_node.tar.xz
     dest: /opt/libc-manual
     remote_src: true # to get it to download from the internet
+    creates: /opt/libc-manual/libc/index.html
 
 - name: register docs
   block:
     - ansible.utils.update_fact:
         updates:
-          - path: "lang_docs['C++']"
+          - path: "lang_docs['C++ (cppreference)']"
+            value:
+              name: C++ Reference (cppreference.com)
+              id: cppreference
+              path: /opt/cppreference
+              index: en/cpp.html
+          - path: "lang_docs['C (cppreference)']"
+            value:
+              name: C Reference (cppreference.com)
+              id: cppreference
+              path: /opt/cppreference
+              index: en/c.html
+          - path: "lang_docs['C++ STL']"
             value:
               name: STL Manual
               id: stl_docs
@@ -66,7 +156,4 @@
               index: index.html
       register: updated
     - set_fact:
-        lang_docs: "{{ updated.lang_docs }}"    
-    
-
-
+        lang_docs: "{{ updated.lang_docs }}"

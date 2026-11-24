@@ -18,10 +18,87 @@
   loop:
     - { name: 'Firefox', exec: 'firefox %u', icon: 'firefox' }
     - { name: 'Guide', exec: 'firefox /htmlfile/documentHtml/index.html', icon: 'firefox' }
+
+# Keep utility launchers out of sight on the main Desktop (placed in ~/Documents/System Tools instead)
+- name: Remove legacy Refresh Connection desktop shortcut template
+  file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - /root/DesktopTemplates/Refresh Connection.desktop
+    - /home/contestant/Desktop/Refresh Connection.desktop
+
+- name: Ensure Documents/System Tools directory exists in skel
+  file:
+    path: /etc/skel/Documents/System Tools
+    state: directory
+    mode: '0755'
+
+- name: Create utility launchers in skel Documents/System Tools
+  copy:
+    dest: "/etc/skel/Documents/System Tools/{{ item.name }}.desktop"
+    mode: '0755'
+    content: |
+      [Desktop Entry]
+      Name={{ item.name }}
+      Exec={{ item.exec }}
+      Icon={{ item.icon }}
+      Type=Application
+      Terminal=false
+  loop:
     - { name: 'Refresh Connection', exec: 'xfce4-terminal --title="Refresh Connection" --execute /icpc/scripts/refresh-contest-ip.sh', icon: 'network-wired' }
+    - { name: 'Change Credentials', exec: 'xfce4-terminal --title="Change Credentials" --execute /icpc/scripts/change-credentials.sh', icon: 'dialog-password' }
+
+- name: Check if contestant home directory exists
+  stat:
+    path: /home/contestant
+  register: contestant_home_stat
+
+- name: Sync Documents/System Tools utility launchers into existing contestant home
+  when: contestant_home_stat.stat.exists and contestant_home_stat.stat.isdir
+  block:
+    - name: Ensure contestant Documents and System Tools directories exist
+      file:
+        path: "{{ item }}"
+        state: directory
+        owner: contestant
+        group: contestant
+        mode: '0755'
+      loop:
+        - /home/contestant/Documents
+        - /home/contestant/Documents/System Tools
+
+    - name: Copy utility launchers into contestant Documents/System Tools
+      copy:
+        src: "/etc/skel/Documents/System Tools/{{ item }}.desktop"
+        dest: "/home/contestant/Documents/System Tools/{{ item }}.desktop"
+        remote_src: yes
+        owner: contestant
+        group: contestant
+        mode: '0755'
+      loop:
+        - Refresh Connection
+        - Change Credentials
 
 
 # Create VS Code shortcut (always available)
+# The icon name shipped by the 'code' package has changed between releases
+# ('vscode', 'com.visualstudio.code', ...); there is no icon called 'code', which
+# left the desktop shortcut blank. Read the real icon from the package's own
+# .desktop file, and fall back to the pixmap path / 'vscode'.
+- name: detect VS Code icon from the installed package
+  shell: |
+    icon=$(sed -n 's/^Icon=//p' /usr/share/applications/code.desktop 2>/dev/null | head -n1)
+    if [ -z "$icon" ]; then
+      for f in /usr/share/pixmaps/vscode.png /usr/share/pixmaps/com.visualstudio.code.png /usr/share/code/resources/app/resources/linux/code.png; do
+        if [ -f "$f" ]; then icon="$f"; break; fi
+      done
+    fi
+    echo "${icon:-vscode}"
+  register: vscode_icon_detect
+  changed_when: false
+  failed_when: false
+
 - name: Create VS Code desktop shortcut
   copy:
     dest: /root/DesktopTemplates/VSCode.desktop
@@ -30,7 +107,7 @@
       [Desktop Entry]
       Name=VS Code
       Exec=code --new-window %F
-      Icon=code
+      Icon={{ vscode_icon_detect.stdout | default('vscode', true) | trim }}
       Type=Application
       Terminal=false
 
@@ -61,6 +138,21 @@
       Comment=Lightweight Code Editor for ICPC
       Exec=geany %F
       Icon=geany
+      Type=Application
+      Terminal=false
+
+# Create Sublime Text shortcut - only if 'sublime' or 'sublime-text' in devtools
+- name: Create Sublime Text desktop shortcut
+  when: "('sublime' in devtools) or ('sublime-text' in devtools)"
+  copy:
+    dest: /root/DesktopTemplates/SublimeText.desktop
+    mode: '0755'
+    content: |
+      [Desktop Entry]
+      Name=Sublime Text
+      Comment=Text Editor for ICPC
+      Exec=/opt/sublime_text/sublime_text %F
+      Icon=sublime-text
       Type=Application
       Terminal=false
 

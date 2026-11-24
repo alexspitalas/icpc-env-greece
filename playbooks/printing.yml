@@ -1,0 +1,91 @@
+---
+# Configure workstation printing mode and optional external print server (/icpc/PRINT_*)
+
+- name: resolve effective print mode
+  set_fact:
+    effective_print_mode: >-
+      {%- set m = print_mode | default('auto') | lower | trim -%}
+      {%- if m == 'auto' -%}
+        {%- if (print_server_url | default('') | trim | length) > 0 -%}
+          http
+        {%- elif (print_server_uri | default('') | trim | length) > 0 or (print_server_ip | default('') | trim | length) > 0 -%}
+          ipp
+        {%- elif domjudge_enabled | default(false) | bool -%}
+          domjudge
+        {%- else -%}
+          local
+        {%- endif -%}
+      {%- else -%}
+        {{ m }}
+      {%- endif -%}
+
+- name: write effective print mode
+  copy:
+    dest: /icpc/PRINT_MODE
+    content: "{{ effective_print_mode | trim }}\n"
+    owner: root
+    group: root
+    mode: '0644'
+
+- name: write print server IP if set
+  copy:
+    dest: /icpc/PRINT_SERVER_IP
+    content: "{{ print_server_ip | default('') | trim }}\n"
+    owner: root
+    group: root
+    mode: '0644'
+  when: print_server_ip | default('') | trim | length > 0
+
+- name: remove print server IP if unset
+  file:
+    path: /icpc/PRINT_SERVER_IP
+    state: absent
+  when: print_server_ip | default('') | trim | length == 0
+
+- name: write print server URI if set
+  copy:
+    dest: /icpc/PRINT_SERVER_URI
+    content: "{{ print_server_uri | default('') | trim }}\n"
+    owner: root
+    group: root
+    mode: '0644'
+  when: print_server_uri | default('') | trim | length > 0
+
+- name: remove print server URI if unset
+  file:
+    path: /icpc/PRINT_SERVER_URI
+    state: absent
+  when: print_server_uri | default('') | trim | length == 0
+
+- name: write print server HTTP URL if set
+  copy:
+    dest: /icpc/PRINT_SERVER_URL
+    content: "{{ print_server_url | default('') | trim }}\n"
+    owner: root
+    group: root
+    mode: '0644'
+  when: print_server_url | default('') | trim | length > 0
+
+- name: remove print server HTTP URL if unset
+  file:
+    path: /icpc/PRINT_SERVER_URL
+    state: absent
+  when: print_server_url | default('') | trim | length == 0
+
+- name: write CUPS queue name if set
+  copy:
+    dest: /icpc/PRINT_SERVER_CUPS_QUEUE
+    content: "{{ print_server_cups_queue | default('') | trim }}\n"
+    owner: root
+    group: root
+    mode: '0644'
+  when: print_server_cups_queue | default('') | trim | length > 0
+
+- name: remove CUPS queue name if unset
+  file:
+    path: /icpc/PRINT_SERVER_CUPS_QUEUE
+    state: absent
+  when: print_server_cups_queue | default('') | trim | length == 0
+
+- name: apply CUPS / print server configuration
+  command: /icpc/scripts/printing_configure

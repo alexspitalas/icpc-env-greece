@@ -1,5 +1,7 @@
 [Desktop Entry]
 Version=1.0
-Name=Script
+Name=Set ICPC Wallpaper
 Type=Application
 Exec=/icpc/scripts/set_wallpaper.sh
+OnlyShowIn=XFCE;
+NoDisplay=true

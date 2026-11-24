@@ -1,442 +1,498 @@
 #!/usr/bin/env python3
 from whiptail import Whiptail
 from pathlib import Path
-import urllib.request
-import csv
-from subprocess import PIPE, Popen, run, CalledProcessError
-import re
-import time
+import json
+import shutil
+from subprocess import PIPE, Popen, run, TimeoutExpired
 import sys
 import signal
 import os
-from urllib.parse import urlparse, quote
+import time
+from urllib.parse import urlparse
 
 # Trap SIGHUP because systemd sends it and we don't want it to interrupt us
 signal.signal(signal.SIGHUP, signal.SIG_IGN)
 
 
-def apply_firewall_rules():
-    return
-    try:
-        # Run the firewall.sh script; capture output and errors
-        result = run(
-            ["/icpc/scripts/firewall.sh"],
-            check=True,            # raise CalledProcessError on non-zero exit
-            stdout=PIPE,
-            stderr=PIPE,
-            text=True              # return output as strings
-        )
-        print("Firewall rules applied successfully.")
-        # Optionally, log result.stdout if desired
-    except CalledProcessError as e:
-        # Script failed—print warning and error output
-        print("Warning: firewall rules failed to apply")
-        print(f"Exit Code: {e.returncode}")
-        print(f"Error Output: {e.stderr}")
-
-def make_safe_url(url: str) -> str:
-    """
-    Returns a parsed and quoted url
-    """
-    _url = urlparse(url)
-    url = _url.scheme + "://" + _url.netloc + quote(_url.path) + "?" + quote(_url.query)
-    return url
-
 def read_file(path, default):
     try:
-        contents = Path(path).read_text().strip()
+        contents = Path(path).read_text(encoding="utf-8").strip()
         if len(contents) == 0:
             return default
         return contents
-    except Exception as e:
-        # TODO log/handle specific errors more properly here
+    except Exception:
         pass
     return default
 
 
-def fetch_url(url):
+def run_quiet(cmd, timeout=None):
+    """Run a command without a shell, capturing output, never raising on failure/timeout."""
     try:
-        with urllib.request.urlopen(make_safe_url(url)) as response:
-            return response.read().decode("UTF-8").strip()
-    except urllib.error.URLError as e:
-        w = Whiptail(title="URL Fetch Error")
-        w.msgbox(f"Exception fetching {url}:\n\n{e}")
-    except Exception as e:
-        w = Whiptail(title="URL Fetch Error")
-        w.msgbox(f"Exception fetching {url}:\n\n{e}")
-    return ''
+        return run(cmd, stdout=PIPE, stderr=PIPE, text=True, check=False, timeout=timeout)
+    except (FileNotFoundError, TimeoutExpired):
+        return None
 
 
-def run_cmd(cmd, ignore_errors=False):
-    p = Popen(cmd, stdout=PIPE, stderr=PIPE)
-    out, err = p.communicate()
-
-    if p.returncode != 0 and not ignore_errors:
-        w = Whiptail("Command Error")
-        w.msgbox(
-            f"""Command: {cmd}
-Code: {p.returncode}
-Out:
-{out}
-
-Err:
-{err}
-"""
-        )
-
-    return (p.returncode, out, err)
+def infobox(w: Whiptail, msg: str):
+    """Show a non-blocking status message so the screen is never blank while work is running."""
+    Popen(
+        ["whiptail", "--title", w.title, "--backtitle", w.backtitle, "--infobox", msg, "8", "70"],
+        stderr=PIPE,
+    ).communicate()
 
 
-def load_printers():
-    printers = []
-    (ret, out, err) = run_cmd(["lpstat", "-v"], ignore_errors=True)
-    lpstat_re = re.compile(r"^device for (?P<name>[^:]+): (?P<uri>.+)$")
-    for l in out.decode("UTF-8").splitlines():
-        m = lpstat_re.match(l)
-        # Only return printers named 'Printer' (because those are the ones we're managing)
-        if not m.group("name").startswith("Printer"):
-            continue
-        printers.append({"uri": m.group("uri"), "name": m.group("name")})
-    return printers
+def set_network_backtitle(w: Whiptail, online: bool):
+    w.backtitle = f"Network status: {'online' if online else 'offline'}"
+
+
+# ----------------------------------------------------------------------------
+# Network / Wi-Fi helpers
+# ----------------------------------------------------------------------------
+
+def is_wireless_enabled() -> bool:
+    return read_file("/icpc/WIRELESS_ENABLED", "false").lower() == "true"
 
 
 def wifi_interfaces():
-    # WIRELESS_INTERFACES=$(iw dev | awk -F' ' '/Interface/{print $2}')
-    if_re = re.compile(r".+Interface (?P<name>.+)$")
-    (ret, out, err) = run_cmd(["iw", "dev"])
-
+    if not is_wireless_enabled():
+        return []
     interfaces = []
-    for l in filter(lambda x: "Interface" in x, out.decode("UTF-8").splitlines()):
-        m = if_re.match(l)
-        interfaces.append(m.group("name"))
-
+    net_dir = Path("/sys/class/net")
+    if net_dir.exists():
+        for iface_dir in sorted(net_dir.iterdir()):
+            if (iface_dir / "wireless").exists() or (iface_dir / "phy80211").exists():
+                interfaces.append(iface_dir.name)
     return interfaces
 
 
-def wifi_scan(interface):
-    # iw $WIFI_INTERFACE scan | awk -F': ' '/SSID:/{print $2}'
+def check_network() -> bool:
+    """Instant, local-only check: does the machine have a default route (i.e. DHCP succeeded)?
 
-    # Make sure the interface is up, otherwise scan won't work
-    (ret, out, err) = run_cmd(["ip", "link", "set", "dev", interface, "up"])
-
-    # Scan for networks
-    (ret, out, err) = run_cmd(["iw", interface, "scan"])
-    ssid_re = re.compile(r"^SSID: (?P<ssid>.+)$")
-
-    ssids = []
-    for l in filter(lambda x: "SSID:" in x, out.decode("UTF-8").splitlines()):
-        m = ssid_re.match(l.strip())
-        if m is not None:
-            ssids.append(m.group("ssid"))
-
-    return ssids
-
-
-def check_network():
-    try:
-        urllib.request.urlopen("http://configs.cloudcontest.org/online_check", timeout=1)
-        return True
-    except Exception as e:
-        print(f"network broken: {e}")
-        time.sleep(2)
-        return False
-
-
-config_url = read_file("/icpc/config_url_base", "http://configs.cloudcontest.org")
-configuration = {}
-PAPERSIZE = "letter"  # or 'a4'
-
-
-def main():
-
-    # This script must be run as root
-    if os.geteuid() != 0:
-        print("Error: This script must be run as root!")
-        sys.exit(1)
-
-    # Do some _really_ basic cli argument handling
-    force = True
-    if len(sys.argv) > 1 and (sys.argv[1] == "-f" or sys.argv[1] == "--force"):
-        force = True
-    
-    # Apply firewall rules first thing
-    apply_firewall_rules()
-    
-    # Exit if the configuration has already been run and the force argument was not specified
-    if Path("/icpc/setup-complete").exists() and not force:
-        print("Already configured. Run with -f or --force to reconfigure.")
-        sys.exit(0)
-
-    # Figure out what contest this is, because it informs some other choices
-    configuration["contest"] = read_file("/icpc/CONTEST", None)
-
-    # Initialize our dialog (with network status in the backtitle)
-    # print("Waiting up to 30s for network...")
-    network_status = True
-    # for i in range(0, 30):
-    #     if check_network():
-    #         network_status = True
-    #         break
-    #     print(".", end="")
-    #     time.sleep(1)
-    w = Whiptail(title="ICPC Setup", backtitle=f"Network status: {'online' if network_status else 'offline'}")
-
-    # Print a welcome message! (and record whether they pressed esc or ok)
-    welcome_ok = welcome(w)
-
-    # prompt to configure Wifi if the network isn't functional and the computer has a wireless interface
-    if not network_status and len(wifi_interfaces()) > 0:
-        configure_wifi(w)
-
-        # Refresh the backtitle with network status now that wifi is configured (hopefully)
-        network_status = check_network()
-        w.backtitle = f"Network status: {'online' if network_status else 'offline'}"
-
-    # they pressed escape on the welcome screen (instead of ok), load some demo data and then exit
-    # if not welcome_ok:
-    #     configuration['contest'] = 'demo'
-    #     configuration['site'] = 'demo site'
-    #     configuration['team'] = {
-    #         "id": '000',
-    #         "name": 'demo team',
-    #         "affiliation": 'fake affiliation',
-    #         "extra": 'team extra - like division information',
-    #     }
-    #     configuration['printers'] = []
-    #     configuration["print_test_page"] = False
-    #     cfg_printing = False
-    # else:
-    configuration['contest'] = 'demo'
-    configuration['site'] = 'demo site'
-    configuration['team'] = {
-        "id": '000',
-        "name": 'demo team',
-        "affiliation": 'fake affiliation',
-        "extra": 'team extra - like division information',
-    }
-    configuration['printers'] = []
-    configuration["print_test_page"] = False
-    cfg_printing = False
-
-
-    # Choose the contest this image is participating in
-    #configure_contest(w)
-
-    # Choose a contest site (this will decide what teams/printers are available later)
-    #configure_site(w)
-
-    # Choose a team that will use this computer
-    #configure_team(w)
-
-    # configure_autologin(w) # TODO
-
-    # Figure out if they want to configure printers (and what that looks like)
-    #cfg_printing = configure_printing(w)
-
-    # show a summary/confirm they want to apply/move ont
-    #if not confirm_summary(w):
-        # re-invoke ourselves to start over
-    #    os.execv(sys.argv[0], sys.argv)
-
-    # Apply the configuration things previously specified
-    apply_configuration()
-    
-    #Uncomment if we give team information on wallpaper
-    #apply_wallpaper()
-    #if cfg_printing:
-    #    ret = apply_printers()
-    #    if not ret:
-    #        w.msgbox("Printing configuration failed. Re-run this script to correct any printer configuration errors")
-
-    # Clear the screen
-    print(chr(27) + "[H" + chr(27) + "[J")
-
-    # Run the self-test script
-    p = Popen("su - -c /icpc/scripts/self_test | tee /icpc/self_test_report", shell=True, stderr=PIPE)
-    out, err = p.communicate()
-    code = p.returncode
-
-    if configuration["print_test_page"]:
-        (ret, out, err) = run_cmd(["su", "-", "contestant", "-c", "/icpc/scripts/printfile /icpc/self_test_report"])
-        print("Test page sent to printer...")
-
-    # Remove the self-test report
-    Path("/icpc/self_test_report").unlink()
-
-    input("Press [enter] to continue")
-    Path("/icpc/setup-complete").write_text(configuration["site"] + "\n")
-
-
-def confirm_summary(w: Whiptail):
-    w.title = "ICPC Setup Summary"
-    return w.yesno(
-        msg=f"""
-Contest: {configuration['contest']}
-Site: {configuration['site']}
-Team: {configuration['team']['id']} - {configuration['team']['name']} ({configuration['team']['affiliation']})
-Printers:
-{configuration['printers']}
-
-Is this correct?
+    Deliberately makes no HTTP requests or pings: end-to-end reachability of the contest
+    sites through Squid is verified (in parallel) by /icpc/scripts/self_test instead.
     """
-    )
+    for family in ("-4", "-6"):
+        res = run_quiet(["ip", family, "route", "show", "default"], timeout=3)
+        if res is not None and res.returncode == 0 and res.stdout.strip():
+            return True
+    return False
 
 
-def apply_printers():
-    failed = False
-    existing_printers = load_printers()
-    if configuration["delete_printers"]:
-        for p in existing_printers:
-            (ret, out, err) = run_cmd(["lpadmin", "-x", p["name"]])
-            # TOOO handle errors
-        (ret, out, err) = run_cmd(["lpadmin", "-x", "ContestPrinter"])  # this is a printer class
-        if ret != 0:
-            failed = True
-        existing_printers = []
+def wait_for_network_manager(timeout: int = 15):
+    """Event-driven wait (no polling) until NetworkManager finished activating saved connections."""
+    if shutil.which("nm-online"):
+        run_quiet(["nm-online", "-s", "-q", "-t", str(timeout)], timeout=timeout + 5)
 
-    for i, p in enumerate(configuration["printers"]):
-        uri = p["uri"]
-        driver = p["driver"]
 
-        # A few driver overrides, but everything should us the everywhere driver these days
-        if driver == "ps":
-            driver = "drv:///sample.drv/generic.ppd"
-        if driver == "pcl":
-            driver = "drv:///sample.drv/generpcl.ppd"
+def wifi_scan(interface):
+    """Return [(ssid, signal_percent)] sorted by signal strength (strongest first)."""
+    run_quiet(["rfkill", "unblock", "wifi"], timeout=5)
+    run_quiet(["nmcli", "radio", "wifi", "on"], timeout=5)
 
-        name = f"Printer{len(existing_printers) + i}"
+    base = ["nmcli", "-t", "--escape", "no", "-f", "SIGNAL,SSID", "dev", "wifi", "list"]
+    res = run_quiet(base + ["--rescan", "yes", "ifname", interface], timeout=30)
+    if res is None or res.returncode != 0 or not res.stdout.strip():
+        # NetworkManager may reject back-to-back rescans or still be initializing; fall back to cached/auto
+        time.sleep(1)
+        res = run_quiet(base + ["--rescan", "auto", "ifname", interface], timeout=30)
 
-        # TODO: acls on printing (default deny? then only allow the contestant to print to what we configure?)
-        (ret, out, err) = run_cmd(
-            [
-                "lpadmin",
-                "-p",
-                name,
-                "-v",
-                p["uri"],
-                "-E",  # enable + set to accept jobs
-                "-m",
-                driver,
-                "-L",
-                p["note"],  # location field, but we put our "note" here
-                "-o",
-                f"media=#{PAPERSIZE}",  # Set paper size (a4 or letter)
-                "-o",
-                "printer-is-shared=false",  # don't set it as shared
-            ]
+    best = {}
+    if res is not None and res.returncode == 0:
+        for line in res.stdout.splitlines():
+            # SIGNAL comes first so SSIDs containing ':' are still parsed correctly
+            sig, _, ssid = line.partition(":")
+            ssid = ssid.strip()
+            if not ssid:
+                continue  # hidden network; use "[Enter Hidden / Custom SSID]"
+            try:
+                sig_val = int(sig)
+            except ValueError:
+                sig_val = 0
+            best[ssid] = max(sig_val, best.get(ssid, 0))
+
+    return sorted(best.items(), key=lambda kv: kv[1], reverse=True)
+
+
+def apply_wifi(w: Whiptail, interface, ssid, password, hidden=False):
+    infobox(w, f"Connecting to Wi-Fi network '{ssid}'...\n\nThis can take up to 30 seconds.")
+    # --wait caps how long nmcli blocks; it returns once the connection (incl. DHCP) is active
+    cmd = ["nmcli", "--wait", "30", "dev", "wifi", "connect", ssid, "ifname", interface]
+    if password:
+        cmd.extend(["password", password])
+    if hidden:
+        cmd.extend(["hidden", "yes"])
+
+    res = run_quiet(cmd, timeout=40)
+    if res is not None and res.returncode == 0:
+        return True, ""
+    if res is None:
+        return False, "Timed out while connecting."
+    return False, (res.stderr or res.stdout or "nmcli failed").strip()
+
+
+def configure_wifi(w: Whiptail):
+    interfaces = wifi_interfaces()
+    if not interfaces:
+        return
+
+    w.title = "ICPC Setup - WiFi Setup"
+    if len(interfaces) == 1:
+        interface = interfaces[0]
+    else:
+        choice, code = w.menu(
+            msg="Choose the wireless interface to configure Wi-Fi:",
+            items=interfaces,
         )
-        if ret != 0:
-            failed = True
+        if code != 0 or not choice:
+            return
+        interface = choice
+
+    while True:
+        infobox(w, f"Scanning for Wi-Fi networks on {interface}...")
+        networks = wifi_scan(interface)
+        menu_items = [(ssid, f"{sig}%") for ssid, sig in networks]
+        menu_items += [
+            ("[Enter Hidden / Custom SSID]", "Type the network name manually"),
+            ("[Rescan]", "Scan for networks again"),
+            ("[Skip Wi-Fi Setup]", "Continue without Wi-Fi"),
+        ]
+
+        choice, code = w.menu(
+            msg=f"Select a Wi-Fi network on {interface}:",
+            items=menu_items,
+        )
+        if code != 0 or not choice or choice == "[Skip Wi-Fi Setup]":
+            return
+        if choice == "[Rescan]":
             continue
 
-        # Add the printer to the ContestPrinter class
-        (ret, out, err) = run_cmd(["lpadmin", "-p", name, "-c", "ContestPrinter"])
-        if ret != 0:
-            failed = True
+        hidden = False
+        if choice == "[Enter Hidden / Custom SSID]":
+            entered_ssid, code = w.inputbox(msg="Enter the Wi-Fi SSID:")
+            entered_ssid = entered_ssid.strip()
+            if code != 0 or not entered_ssid:
+                continue
+            ssid = entered_ssid
+            hidden = True
+        else:
+            ssid = choice
+
+        password, code = w.inputbox(
+            msg=f"Enter the Wi-Fi password for '{ssid}' (leave empty for an open network):",
+            password=True,
+        )
+        if code != 0:
             continue
 
-        # really make sure the printer is enabled/accepting jobs
-        (ret, out, err) = run_cmd(["cupsenable", name])
-        if ret != 0:
-            failed = True
-            continue
+        ok, err_msg = apply_wifi(w, interface, ssid, password, hidden=hidden)
+        if ok:
+            return
 
-        (ret, out, err) = run_cmd(["cupsaccept", name])
-        if ret != 0:
-            failed = True
-            continue
+        if not w.yesno(
+            msg=f"Failed to connect to '{ssid}':\n\n{err_msg}\n\nWould you like to try again?",
+            default="yes",
+        ):
+            return
 
-    # Check if we have any printers present, if so make sure we enable the class and set it as default
-    # also ask about printing a test page
-    existing_printers = load_printers()
-    if len(existing_printers) > 0:
-        # Set as default
-        (ret, out, err) = run_cmd(["lpadmin", "-d", "ContestPrinter"])
-        if ret != 0:
-            return (
-                False  # return here because setting failed and breaking out of the if statement we're in is difficult
+
+# ----------------------------------------------------------------------------
+# DOMjudge / printing helpers
+# ----------------------------------------------------------------------------
+
+def is_domjudge_enabled() -> bool:
+    return read_file("/icpc/DOMJUDGE_ENABLED", "false").lower() == "true"
+
+
+def read_domjudge_credentials():
+    creds_path = Path("/icpc/domjudge_credentials")
+    if not creds_path.exists():
+        return None, None
+    try:
+        data = json.loads(creds_path.read_text(encoding="utf-8"))
+        username = str(data.get("username", "")).strip()
+        password = str(data.get("password", ""))
+        if username and password:
+            return username, password
+    except Exception:
+        pass
+    return None, None
+
+
+def needs_domjudge_setup() -> bool:
+    if not is_domjudge_enabled():
+        return False
+    url = read_file("/icpc/JUDGE_SYSTEM_URL", "")
+    parsed = urlparse(url) if url else None
+    if not parsed or parsed.scheme not in ("http", "https") or not parsed.hostname:
+        return True
+    username, password = read_domjudge_credentials()
+    return not (username and password)
+
+
+def sync_domjudge_config(reload_squid: bool = False):
+    cmd = ["/icpc/scripts/domjudge_apply_creds"]
+    if reload_squid:
+        cmd.append("--reload-squid")
+    run_quiet(cmd, timeout=60)
+
+
+def sync_printing_config():
+    script = Path("/icpc/scripts/printing_configure")
+    if script.exists():
+        run_quiet([str(script)], timeout=60)
+
+
+def needs_print_team_prompt() -> bool:
+    if is_domjudge_enabled():
+        return False
+    mode = read_file("/icpc/PRINT_MODE", "local").lower()
+    if mode not in ("ipp", "cups", "http"):
+        return False
+    return len(read_file("/icpc/PRINT_TEAM", "")) == 0
+
+
+def configure_print_team(w: Whiptail, force: bool = False):
+    if is_domjudge_enabled():
+        return
+    mode = read_file("/icpc/PRINT_MODE", "local").lower()
+    if mode not in ("ipp", "cups", "http"):
+        return
+    existing = read_file("/icpc/PRINT_TEAM", "")
+    if existing and not force:
+        return
+
+    w.title = "ICPC Setup - Team Print Header"
+    while True:
+        entered, code = w.inputbox(
+            msg="Enter the team name to display on printed pages:",
+            default=existing,
+        )
+        if code != 0:
+            return
+        entered = entered.strip()
+        if entered:
+            for fname in ("/icpc/PRINT_TEAM", "/icpc/TEAMNAME", "/icpc/TEAM"):
+                Path(fname).write_text(entered + "\n", encoding="utf-8")
+                os.chmod(fname, 0o644)
+            break
+        w.msgbox("Team name cannot be empty.")
+
+
+def inputbox_step(
+    w: Whiptail,
+    msg: str,
+    default: str = "",
+    password: bool = False,
+    cancel_label: str = "Cancel",
+):
+    control = "passwordbox" if password else "inputbox"
+    res = w.run(
+        control,
+        msg,
+        extra_args=["--cancel-button", cancel_label],
+        extra_values=[default],
+    )
+    return res.value, res.returncode
+
+
+def configure_domjudge(
+    w: Whiptail,
+    force: bool = False,
+    edit_existing: bool = False,
+    allow_url_edit: bool = True,
+):
+    if not is_domjudge_enabled():
+        return
+
+    url = read_file("/icpc/JUDGE_SYSTEM_URL", "")
+    parsed = urlparse(url) if url else None
+    url_valid = bool(parsed and parsed.scheme in ("http", "https") and parsed.hostname)
+    existing_user, existing_pass = read_domjudge_credentials()
+
+    if not allow_url_edit and not url_valid:
+        w.title = "ICPC Setup - DOMjudge Configuration"
+        w.msgbox("DOMjudge URL is not configured.\n\nPlease ask an administrator to configure the server URL.")
+        return
+
+    # Already configured and synced at the start of main(); nothing to do
+    if not force and not edit_existing and url_valid and existing_user and existing_pass:
+        return
+
+    if force and not edit_existing and url_valid and existing_user and existing_pass:
+        w.title = "ICPC Setup - DOMjudge Configuration"
+        if w.yesno(
+            msg=f"DOMjudge credentials are already configured.\n\nURL: {url}\nTeam: {existing_user}\n\nKeep existing DOMjudge settings?",
+            default="yes",
+        ):
+            return
+
+    w.title = "ICPC Setup - DOMjudge Configuration"
+    url_input = url
+    # Never pre-populate or reveal previously saved credentials in contestant creds-only mode.
+    username = (existing_user or "") if allow_url_edit else ""
+    password = ""
+    show_password = False
+    can_edit_url = allow_url_edit and ((not url_valid) or force)
+    prompt_url = can_edit_url
+    if edit_existing and allow_url_edit and url_valid and existing_user and existing_pass:
+        password = existing_pass
+        step = "confirm"
+    else:
+        step = "url" if prompt_url else "user"
+    return_to_confirm = False
+
+    while True:
+        if step == "url":
+            cancel_label = "Back" if return_to_confirm else "Cancel"
+            entered_url, code = inputbox_step(
+                w,
+                msg="Enter the DOMjudge server URL (e.g. https://judge.example.com/):",
+                default=url_input,
+                cancel_label=cancel_label,
             )
+            if code != 0:
+                if return_to_confirm:
+                    url_input = url
+                    return_to_confirm = False
+                    step = "confirm"
+                    continue
+                return
+            entered_url = entered_url.replace("\r", "").replace("\n", "").strip()
+            p = urlparse(entered_url) if entered_url else None
+            if not p or p.scheme not in ("http", "https") or not p.hostname:
+                url_input = entered_url
+                w.msgbox("Please enter a valid http:// or https:// DOMjudge URL.")
+                continue
+            url = entered_url
+            url_input = url
+            url_valid = True
+            if return_to_confirm:
+                return_to_confirm = False
+                step = "confirm"
+            else:
+                step = "user"
 
-        # Set it as enabled
-        (ret, out, err) = run_cmd(["cupsenable", "ContestPrinter"])
-        if ret != 0:
-            return False
+        elif step == "user":
+            can_back = return_to_confirm or prompt_url
+            cancel_label = "Back" if can_back else "Cancel"
+            hint = " (select Back to return)" if return_to_confirm else (" (select Back to edit URL)" if prompt_url else "")
+            entered_user, code = inputbox_step(
+                w,
+                msg=f"DOMjudge URL: {url}\n\nEnter the DOMjudge team username{hint}:",
+                default=username,
+                cancel_label=cancel_label,
+            )
+            if code != 0:
+                if return_to_confirm:
+                    return_to_confirm = False
+                    step = "confirm"
+                    continue
+                if prompt_url:
+                    url_input = url
+                    step = "url"
+                    continue
+                return
+            entered_user = entered_user.replace("\r", "").replace("\n", "").strip()
+            if not entered_user:
+                w.msgbox("Team username cannot be empty.")
+                continue
+            if len(entered_user) > 128 or any(
+                ord(ch) < 33 or ord(ch) > 126 or ch in {'"', "'", "\\", "%"}
+                for ch in entered_user
+            ):
+                w.msgbox(
+                    "Team username contains invalid characters.\n\n"
+                    "Spaces, quotes, backslashes, '%', and non-ASCII characters are not allowed."
+                )
+                continue
+            username = entered_user
+            if return_to_confirm:
+                return_to_confirm = False
+                step = "confirm"
+            else:
+                step = "pass"
 
-        # Set it as accepting jobs
-        (ret, out, err) = run_cmd(["cupsaccept", "ContestPrinter"])
-        if ret != 0:
-            return False
+        elif step == "pass":
+            hint = "select Back to return" if return_to_confirm else "select Back to change username"
+            entered_pass, code = inputbox_step(
+                w,
+                msg=f"DOMjudge URL: {url}\nTeam Username: {username}\n\nEnter the DOMjudge password ({hint}):",
+                default=password if show_password else "",
+                password=not show_password,
+                cancel_label="Back",
+            )
+            if code != 0:
+                if return_to_confirm:
+                    return_to_confirm = False
+                    step = "confirm"
+                else:
+                    step = "user"
+                continue
+            entered_pass = entered_pass.replace("\r", "").replace("\n", "")
+            if not entered_pass:
+                w.msgbox("Team password cannot be empty.")
+                continue
+            if any(ord(ch) < 32 or ord(ch) == 127 for ch in entered_pass):
+                w.msgbox("Team password contains invalid control characters.")
+                continue
+            password = entered_pass
+            return_to_confirm = False
+            step = "confirm"
 
-    return not failed
+        elif step == "confirm":
+            pass_display = password if show_password else f"{'*' * len(password)} ({len(password)} chars)"
+            toggle_item = (
+                ("Hide Password", "Mask the password on screen")
+                if show_password
+                else ("Show Password", "Reveal the password on screen")
+            )
+            menu_items = [
+                ("Save & Continue", "Save these DOMjudge credentials"),
+                toggle_item,
+            ]
+            if can_edit_url:
+                menu_items.append(("Edit URL", "Change the DOMjudge server URL"))
+            menu_items.extend([
+                ("Edit Username", "Change the team username"),
+                ("Edit Password", "Change the team password"),
+                ("Cancel / Skip", "Exit without saving"),
+            ])
+            choice, code = w.menu(
+                msg=f"URL: {url}\nUsername: {username}\nPassword: {pass_display}\nConfirm or select an option:",
+                items=menu_items,
+            )
+            if code != 0 or not choice or choice == "Cancel / Skip":
+                return
+            if choice == "Save & Continue":
+                break
+            if choice in ("Show Password", "Hide Password"):
+                show_password = not show_password
+            elif choice == "Edit URL" and can_edit_url:
+                url_input = url
+                return_to_confirm = True
+                step = "url"
+            elif choice == "Edit Username":
+                return_to_confirm = True
+                step = "user"
+            elif choice == "Edit Password":
+                return_to_confirm = True
+                step = "pass"
 
+    if can_edit_url:
+        Path("/icpc/JUDGE_SYSTEM_URL").write_text(url + "\n", encoding="utf-8")
+        os.chmod("/icpc/JUDGE_SYSTEM_URL", 0o644)
 
-def apply_configuration():
-    # Write the configuration out to files
-    Path("/icpc/CONTEST").write_text(configuration["contest"] + "\n")
-    Path("/icpc/SITE").write_text(configuration["site"] + "\n")
-    Path("/icpc/TEAMID").write_text(configuration["team"]["id"] + "\n")
-    Path("/icpc/TEAMNAME").write_text(configuration["team"]["name"] + "\n")
-    Path("/icpc/TEAMAFFILIATION").write_text(configuration["team"]["affiliation"] + "\n")
-    Path("/icpc/TEAM").write_text(
-        f"{configuration['team']['id']} - {configuration['team']['name']} ({configuration['team']['affiliation']})\n"
+    creds_path = Path("/icpc/domjudge_credentials")
+    creds_path.write_text(
+        json.dumps({"username": username, "password": password}) + "\n",
+        encoding="utf-8",
     )
+    os.chmod(creds_path, 0o600)
+    os.chown(creds_path, 0, 0)
+    Path("/icpc/PRINT_TEAM").unlink(missing_ok=True)
 
-
-def apply_wallpaper():
-    cmd = [
-        "convert",
-        "/icpc/wallpaper.png",
-        "-gravity",
-        "center",
-        "-pointsize",
-        "50",
-        "-family", "Ubuntu",
-        "-stroke",
-        "#000C",
-        "-strokewidth",
-        "2",
-        "-annotate",
-        "0",
-        configuration["team"]["name"],
-        "-stroke",
-        "none",
-        "-fill",
-        "white",
-        "-annotate",
-        "0",
-        configuration["team"]["name"],
-        "-pointsize",
-        "30",
-        "-stroke",
-        "#000C",
-        "-strokewidth",
-        "2",
-        "-annotate",
-        "+0+60",
-        configuration["team"]["affiliation"],
-        "-stroke",
-        "none",
-        "-fill",
-        "white",
-        "-annotate",
-        "+0+60",
-        configuration["team"]["affiliation"],
-        "/icpc/teamWallpaper.png",
-    ]
-    (code, out, err) = run_cmd(cmd)
-    if code != 0:
-        w = Whiptail(title="Wallpaper Generation Error")
-        w.msgbox(
-            f"Error applying wallpaper:\ncommand:{' '.join(cmd)}\n\nReturn Code: {code}\n\nout: {out}\n\nerr: {err}"
-        )
-    # convert /icpc/wallpaper.png \
-    # -gravity center -pointsize 50 \
-    # -stroke '#000C' -strokewidth 2 -annotate 0 "$(cat /icpc/TEAMNAME)" \
-    # -stroke none -fill white -annotate 0 "$(cat /icpc/TEAMNAME)" \
-    # -pointsize 30 \
-    # -stroke '#000C' -strokewidth 2 -annotate +0+60 "$(cat /icpc/TEAMAFFILIATION)" \
-    # -stroke none -fill white -annotate +0+60 "$(cat /icpc/TEAMAFFILIATION)" \
-    # /icpc/teamWallpaper.png
+    infobox(w, "Saving DOMjudge settings and reloading the proxy...")
+    sync_domjudge_config(reload_squid=True)
 
 
 def welcome(w: Whiptail):
@@ -444,239 +500,106 @@ def welcome(w: Whiptail):
     code = w.msgbox(
         "Please answer the following questions to finalize the configuration of your environment.\n\nYou can re-run this script later by executing '/icpc/scripts/icpc_setup -f' as root."
     )
-
     return code == 0
 
 
-def apply_wifi(interface, ssid, password):
-    with open("/etc/netplan/50-wifi-config.yaml", "w+") as f:
-        f.write(
-            f"""
-# Created by firstboot script
-network:
-  version: 2
-  renderer: networkd
-  wifis:
-    {interface}:
-      access-points:
-        "{ssid}":
-          password: "{password}"
-      dhcp4: true
-      dhcp-identifier: mac
-"""
+# ----------------------------------------------------------------------------
+# Main
+# ----------------------------------------------------------------------------
+
+def activate_attached_vt():
+    """If running on a dedicated virtual console (e.g. /dev/tty8 from firstboot.service), switch to it."""
+    try:
+        tty = os.ttyname(0)
+    except OSError:
+        return
+    if tty.startswith("/dev/tty") and tty[8:].isdigit():
+        run_quiet(["chvt", tty[8:]], timeout=3)
+
+
+def main():
+    if os.geteuid() != 0:
+        print("Error: This script must be run as root!")
+        sys.exit(1)
+
+    args = set(sys.argv[1:])
+    domjudge_only = "--domjudge-only" in args
+    domjudge_creds_only = "--domjudge-creds-only" in args
+    force = bool(args & {"-f", "--force"})
+
+    if domjudge_only or domjudge_creds_only:
+        w = Whiptail(title="ICPC Setup - DOMjudge Configuration")
+        set_network_backtitle(w, check_network())
+        configure_domjudge(
+            w,
+            force=True,
+            edit_existing=True,
+            allow_url_edit=not domjudge_creds_only,
         )
-
-    print("Connecting to wifi...")
-    (ret, out, err) = run_cmd("netplan", "apply")
-    has_net = False
-    for i in range(0, 60, 5):
-        if check_network():
-            has_net = True
-            break
-        time.sleep(5)
-
-    if has_net:
-        print("Connected successfully!")
-    else:
-        print("Error connecting")
-
-
-def configure_wifi(w: Whiptail):
-    interfaces = wifi_interfaces()
-
-    w.title = "ICPC Setup - WiFi Setup"
-
-    # TODO: error handling
-    (choice, code) = w.menu(
-        msg="No network was detected. Choose your wireless interface to configure wifi", items=interfaces
-    )
-    interface = choice
-    print(f"Scanning for networks on: {interface}")
-    ssids = wifi_scan(interface)
-
-    # TODO: error handling
-    (choice, code) = w.menu(msg="Select a network to connect to.\nIt must support WPA 2 authentication.", items=ssids)
-    ssid = choice
-
-    (password, code) = w.inputbox(msg=f"Enter the network password for: {ssid}", password=True)
-
-    apply_wifi(interface, ssid, password)
-
-
-def configure_contest(w: Whiptail):
-    configuration["contest"] = read_file("/icpc/CONTEST", None)
-
-    # Skip contest configuration if it's already specified
-    if configuration['contest'] is not None:
-        configuration['url'] = config_url + '/' + configuration['contest']
         return
 
-    w.title = "ICPC Setup - Contest Selection"
-    while True:
-        content = fetch_url(config_url + "/contests")
-        contests = list(filter(lambda l: len(l.strip()) > 0, content.splitlines()))
-        contests.append('Enter Manually')
+    # Keep DOMjudge and printing configuration synced if already present
+    if not needs_domjudge_setup():
+        sync_domjudge_config(reload_squid=True)
+    sync_printing_config()
 
-        from pprint import pprint
-        pprint(contests)
+    # Exit if the configuration has already been run and the force argument was not specified
+    if Path("/icpc/setup-complete").exists() and not force and not needs_domjudge_setup() and not needs_print_team_prompt():
+        print("Already configured. Run with -f or --force to reconfigure.")
+        sys.exit(0)
 
-        contest, _code = w.menu(msg="Choose the contest this machine belongs to:", items=contests)
+    activate_attached_vt()
 
-        if contest == 'Enter Manually':
-            contest, _code = w.inputbox(msg="Enter your contest id:")
+    w = Whiptail(title="ICPC Setup")
+    has_wifi = len(wifi_interfaces()) > 0  # always False when wireless is disabled
 
-        confirm = w.yesno(msg=f"You chose the following contest. Be absolutely sure this is correct as this wizard will not ask again:\n\n{contest}\n\nIs this correct?", default='yes')
-        if confirm:
-            break
+    network_status = check_network()
+    if has_wifi and not network_status:
+        set_network_backtitle(w, network_status)
+        infobox(w, "Waiting for the network connection (up to 15 seconds)...")
+        wait_for_network_manager(15)
+        network_status = check_network()
+    set_network_backtitle(w, network_status)
 
-    # Specify the config url/contest in the configuration hash
-    configuration['contest'] = contest
-    configuration['url'] = config_url + '/' + contest
+    # Only show the welcome screen when there is actually something to ask
+    if force or needs_domjudge_setup() or needs_print_team_prompt() or (has_wifi and not network_status):
+        welcome(w)
 
+    # Prompt to configure Wi-Fi when wireless support is enabled and either no active
+    # network connection is present (or the admin ran icpc_setup -f).
+    if has_wifi:
+        network_status = check_network()  # DHCP may have finished while the welcome screen was shown
+        set_network_backtitle(w, network_status)
+        if not network_status:
+            if w.yesno(
+                msg="No active network connection was detected.\n\nWould you like to connect to a Wi-Fi network now?",
+                default="yes",
+            ):
+                configure_wifi(w)
+        elif force:
+            if w.yesno(
+                msg="An active network connection is already present.\n\nWould you like to configure or switch Wi-Fi networks?",
+                default="no",
+            ):
+                configure_wifi(w)
+        set_network_backtitle(w, check_network())
 
+    configure_domjudge(w, force=force)
+    configure_print_team(w, force=force)
 
-def configure_site(w: Whiptail):
-    w.title = "ICPC Setup - Site Configuration"
-    configuration["site"] = read_file("/icpc/SITE", None)
+    # Clear the screen
+    print(chr(27) + "[H" + chr(27) + "[J")
+    print("Running self test, please wait...\n", flush=True)
 
-    while True:
-        content = fetch_url(configuration['url'] + "/sites.csv")
-        sites = list(csv.DictReader(content.splitlines(), fieldnames=["id", "name"]))
+    # Run the self-test script
+    p = Popen("su - -c /icpc/scripts/self_test | tee /icpc/self_test_report", shell=True, stderr=PIPE)
+    p.communicate()
 
-        menu = [(s["id"], s["name"]) for s in sites]
-        if configuration['site'] is not None:
-            menu.insert(0, ("keep", f"Keep existing site({configuration['site']})"))
-        menu.append(('manual', 'Enter site name manually'))
+    # Remove the self-test report
+    Path("/icpc/self_test_report").unlink(missing_ok=True)
 
-        (site, code) = w.menu("Choose your contest site from the list", items=menu)
-        if code != 0:
-            print("Screen aborted, asking again.")
-            continue
-
-        if site == 'manual':
-            site, code = w.inputbox(msg="Enter your contest site:")
-
-        if site == 'keep':
-            site = configuration['site']
-
-        if code == 0:
-            break
-
-    configuration["site"] = site
-
-
-def configure_team(w: Whiptail):
-    w.title = "ICPC Setup - Team Configuration"
-    configuration["team"] = {
-        "id": read_file("/icpc/TEAMID", "000"),
-        "name": read_file("/icpc/TEAMNAME", "default team"),
-        "affiliation": read_file("/icpc/TEAMAFFILIATION", "default university"),
-        "extra": read_file("/icpc/TEAMEXTRA", "extra data"),
-    }
-
-    content = fetch_url(configuration['url'] + f"/teams/{configuration['site']}_teams.csv")
-    teams = list(csv.DictReader(content.splitlines(), fieldnames=["id", "name", "affiliation", "extra"]))
-    # strip whitespace around any csv entries
-    teams = list(map(lambda t: {k: v.strip() for k, v in t.items()}, teams))
-
-    menu = [
-        (
-            t["id"],
-            f"{t['name'] : <30} {t['affiliation'] : <40}{' '+t['extra'] if len(t['extra']) > 0 else ''}",
-        )
-        for t in teams
-    ]
-    menu.append(('manual', 'Enter team name manually'))
-
-    if configuration["team"]["id"] != "000":
-        menu.insert(
-            0,
-            (
-                configuration["team"]["id"],
-                f"Keep existing team selection ({configuration['team']['id']} {configuration['team']['name']} {configuration['team']['affiliation']})",
-            ),
-        )
-
-    (teamid, code) = w.menu(msg="Choose a team", items=menu)
-    if code != 0:
-        print('Skipping team selection')
-        return
-
-    if teamid == 'manual':
-        id, code = w.inputbox('Enter team id (e.g. 123)')
-        name, code = w.inputbox('Enter team name (e.g. "null pointer")')
-        affiliation, code = w.inputbox('Enter team affiliation (e.g. "University of ICPC")')
-
-        # Fake the data so our manually entered data is present
-        teams = [{
-            'id': id,
-            'name': name,
-            'affiliation': affiliation,
-            'extra': '',
-        }]
-        teamid = id
-
-
-    # Update configuration only if they picked a different teamid
-    if teamid != configuration["team"]["id"]:
-        configuration["team"] = [t for t in teams if t["id"] == teamid][0]
-    else:
-        # make sure the site matches the team since they picked 'keep same'
-        configuration["site"] = read_file("/icpc/SITE", "other")
-
-
-def configure_autologin(w: Whiptail):
-    w.msgbox("TODO autologin CONFIGURATION")
-
-
-def configure_printing(w: Whiptail):
-    w.title = "ICPC Setup - Printing Configuration"
-
-    configuration["printers"] = []
-    configuration["print_test_page"] = False
-    existing_printers = load_printers()
-
-    skip = not w.yesno(msg="Configure printers?", default="yes")
-    if skip:
-        return False
-
-    configuration["delete_printers"] = False
-    if len(existing_printers) > 0:
-        configuration["delete_printers"] = w.yesno(msg="Delete existing printers?", default="no")
-
-    content = fetch_url(configuration['url'] + f"/printers/{configuration['site']}_printers.csv")
-    printer_groups = list(csv.DictReader(content.splitlines(), fieldnames=["id", "name"]))
-    menu = [(g["id"], f"{g['name']}") for g in printer_groups]
-    menu.append(("manual", "Enter printer ip manually"))
-    menu.append(("skip", "Skip configuring printers"))
-
-    (printer_group, code) = w.menu(msg="Select printers to install", items=menu)
-    if code != 0:
-        raise Exception("exited whiptail...")
-
-    if printer_group == "manual":  # Choosing to manually enter printers
-        while True:
-            (printer, code) = w.inputbox(
-                msg="Please enter your printer ip address/hostname.\nNote: Your printer must support IPP Everywhere.\n\nLeave this blank to finish adding printers.",
-            )
-            if code != 0 or len(printer) == 0:  # they exited abnormally/entered nothing
-                break
-            # Force it to be a uri if they entered a plain ip address/hostname
-            if "://" not in printer:
-                printer = f"ipp://{printer}"
-            configuration["printers"].append({"uri": printer, "driver": "everywhere", "note": "Entered Manually"})
-    elif printer_group != "skip":
-        content = fetch_url(configuration['url'] + f"/printers/{configuration['site']}/{printer_group}.csv")
-        printers = list(
-            csv.DictReader(
-                content.splitlines(), fieldnames=["uri", "driver", "note"], restval="Automatically Provisioned"
-            )
-        )
-        configuration["printers"] = printers
-
-    configuration["print_test_page"] = w.yesno(msg="Would you like to send a test page to the printer?", default="no")
-
-    return True
+    input("Press [enter] to continue")
+    Path("/icpc/setup-complete").write_text("configured\n", encoding="utf-8")
 
 
 if __name__ == "__main__":
