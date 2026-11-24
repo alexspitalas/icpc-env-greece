@@ -31,22 +31,30 @@
   become: yes
   when: "'intellij-clion' in devtools and clion_license_key is defined and clion_license_key | length > 0"
 
-# ── Strip bundled AI / local LLM / MCP / remote-collab & high-impact unused plugins ──
-# Modern JetBrains IDEs (2025.2+) bundle `fullLine` (offline local LLM for full-line code
-# completion), `mcpserver` (MCP server for external AI agents), `cwm-plugin` (Code With Me),
-# and large unused enterprise/cloud/localization plugins (Qodana, SVN/Hg/Perforce/GitHub/GitLab,
-# CJK language packs, async performance profiler, ML search). Every directory listed here has
-# zero required dependencies from core Java/Kotlin/Python/C++ IDE plugins.
-- name: Remove bundled AI, local LLM, MCP, remote-collab, and high-impact unused plugins from JetBrains IDEs
+# ── Strip bundled AI / local LLM / ML / MCP / remote-collab & high-impact unused plugins ──
+# Verified across ideaIC-2025.2.4, CLion-2025.2.4, and pycharm-2025.3.6.1 tarballs:
+#   - AI/LLM/ML/MCP: fullLine (offline local LLM, 272-475 MB/IDE), completionMlRanking,
+#     turboComplete, aiplayground (PyCharm 92 MB), mcpserver, ml-llm/ai-assistant/llm/junie,
+#     searchEverywhereMl, marketplaceMl
+#   - Remote collab / sync: cwm-plugin + rider-plugins-clion-radler-cwm (CLion hard-dep on cwm),
+#     settingsSync, station-plugin, remote-dev-server
+#   - High-impact unused bloat: restClient, swagger, clouds-docker-impl/gateway, qodana,
+#     kotlin-jupyter-plugin, jupyter-py-colab-plugin, performanceTesting-async,
+#     vcs-svn/hg/perforce/github/gitlab, localization-ja/ko/zh
+# Frees ~2.5 GB across IDEA + CLion + PyCharm with zero required core-IDE dependencies.
+- name: Remove bundled AI, local LLM, ML, MCP, remote-collab, and high-impact unused plugins from JetBrains IDEs
   shell: |
     removed=0
     for ide_dir in /opt/jetbrains/*; do
       [ -d "$ide_dir/plugins" ] || continue
       for p in \
-        fullLine turboComplete cwm-plugin settingsSync \
+        fullLine completionMlRanking turboComplete aiplayground \
+        cwm-plugin rider-plugins-clion-radler-cwm settingsSync \
         ml-llm ai-assistant llm junie \
         searchEverywhereMl marketplaceMl station-plugin \
-        qodana kotlin-jupyter-plugin performanceTesting-async \
+        remote-dev-server clouds-docker-impl clouds-docker-gateway \
+        restClient swagger qodana \
+        kotlin-jupyter-plugin jupyter-py-colab-plugin performanceTesting-async \
         vcs-svn vcs-hg vcs-perforce vcs-github vcs-github-IU vcs-gitlab vcs-gitlab-IU \
         localization-ja localization-ko localization-zh; do
         if [ -e "$ide_dir/plugins/$p" ]; then
@@ -54,12 +62,12 @@
           removed=1
         fi
       done
-      # Also catch any casing/hyphen variants of MCP Server or Copilot plugins (e.g. mcpserver, mcp-server, mcpServer)
+      # Also catch any casing/hyphen variants of Full Line, AI Playground, MCP Server, Copilot, or Junie
       while IFS= read -r match; do
         [ -n "$match" ] || continue
         rm -rf "$match"
         removed=1
-      done < <(find "$ide_dir/plugins" -maxdepth 1 -mindepth 1 \( -iname 'mcp*' -o -iname '*copilot*' \) 2>/dev/null)
+      done < <(find "$ide_dir/plugins" -maxdepth 1 -mindepth 1 \( -iname 'mcp*' -o -iname '*copilot*' -o -iname '*fullline*' -o -iname '*full-line*' -o -iname '*aiplayground*' -o -iname '*junie*' \) 2>/dev/null)
     done
     [ "$removed" -eq 1 ] && echo "removed" || true
   args:
@@ -82,7 +90,9 @@
 - name: Find IntelliJ IDEA directory
   find:
     paths: /opt/jetbrains
-    patterns: 'ideaIC-*'
+    patterns:
+      - 'ideaIC-*'
+      - 'idea-IC-*'
     file_type: directory
   register: idea_dir
   become: yes
@@ -100,7 +110,9 @@
 - name: Find CLion directory
   find:
     paths: /opt/jetbrains
-    patterns: 'CLion-*'
+    patterns:
+      - 'CLion-*'
+      - 'clion-*'
     file_type: directory
   register: clion_dir
   become: yes

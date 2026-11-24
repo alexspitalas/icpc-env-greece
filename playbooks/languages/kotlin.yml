@@ -274,11 +274,38 @@
   become: yes
   ignore_errors: true
 
-- name: Create ~/.m2 symlink in /etc/skel for new team users
+# Strip Maven remote-origin markers (_remote.repositories / *.lastUpdated) left by
+# `mvn dependency:get`. In offline mode, IntelliJ's Maven Resolver (Aether) refuses to
+# resolve cached JARs if _remote.repositories pins them to an unreachable remote repo.
+- name: Remove Maven _remote.repositories and .lastUpdated markers for offline resolution
+  shell: |
+    find /opt/m2/repository \( -name '_remote.repositories' -o -name '*.lastUpdated' \) -delete
+  changed_when: false
+  become: yes
+
+- name: Configure Maven offline settings in /opt/m2/settings.xml
+  copy:
+    dest: /opt/m2/settings.xml
+    mode: '0644'
+    content: |
+      <settings xmlns="http://maven.apache.org/SETTINGS/1.0.0"
+                xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                xsi:schemaLocation="http://maven.apache.org/SETTINGS/1.0.0 https://maven.apache.org/xsd/settings-1.0.0.xsd">
+        <offline>true</offline>
+      </settings>
+  become: yes
+
+# Copy /opt/m2 into /etc/skel/.m2 (instead of symlinking to root-owned /opt/m2) so each
+# contestant home gets a writable ~/.m2/repository where IntelliJ's Kotlin configurator
+# (JarRepositoryManager / Maven Resolver) can create lockfiles and resolve kotlin-stdlib-jdk8.
+- name: Remove legacy /etc/skel/.m2 symlink before copying writable Maven cache
   file:
-    src: /opt/m2
-    dest: /etc/skel/.m2
-    state: link
+    path: /etc/skel/.m2
+    state: absent
+  become: yes
+
+- name: Copy pre-seeded Maven repository into /etc/skel/.m2 for new team users
+  command: cp -a /opt/m2 /etc/skel/.m2
   become: yes
 
 # ── Force offline mode via Gradle init script ─────────────────────────────────
