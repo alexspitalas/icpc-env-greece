@@ -1,0 +1,11 @@
+[Unit]
+Description=Stabilize CPU frequency and disable Turbo Boost for DOMjudge judgehosts
+After=multi-user.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/sbin/judgehost-tuning.sh
+
+[Install]
+WantedBy=multi-user.target

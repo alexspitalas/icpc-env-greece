@@ -1,3 +1,14 @@
 *.iso
 configs/ssh*
 group_vars/all
+group_vars/all.yaml
+group_vars/all.yml
+files/CLion*
+files/eclipse*
+files/pycharm*
+files/idea*
+files/apache-netbeans*
+files/sublime-text*
+files/node_exporter*
+__pycache__/
+*.pyc

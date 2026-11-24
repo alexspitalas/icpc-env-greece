@@ -91,7 +91,9 @@
     - import_tasks: 'playbooks/compilers.yml'
     - import_tasks: 'playbooks/devel_tools.yml'
     - import_tasks: 'playbooks/icpc.yml'
-    - import_tasks: 'playbooks/vmtouch.yml'
+    # Disabled on judgesImage: vmtouch preloads ~4 GB of host IDEs into RAM and causes heavy boot I/O
+    # that evicts Docker/DOMjudge page cache.
+    # - import_tasks: 'playbooks/vmtouch.yml'
     - import_tasks: 'playbooks/system.yml'
 
     - import_tasks: 'playbooks/firewall.yaml'
@@ -135,6 +137,9 @@
 
     - name: restart ssh
       service: name=ssh state=restarted
+
+    - name: restart docker
+      service: name=docker state=restarted
 
     - name: reload nginx
       ansible.builtin.service:

@@ -4,7 +4,13 @@
     pkg:
       - ufw
 
+- name: allow inbound OpenSSH in UFW (so SSH is never blocked if UFW is enabled)
+  ufw:
+    rule: allow
+    name: OpenSSH
+
+# Firewall is kept disabled on judgehosts so it does not interfere with Docker/DOMserver traffic.
 # - name: Enable ufw service
-#   ufw: state=enabled logging=off 
+#   ufw: state=enabled logging=off
 # - name: Execute firewall script
 #   command: /icpc/scripts/firewall.sh

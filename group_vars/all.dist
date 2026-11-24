@@ -7,6 +7,12 @@ icpc_timezone: 'Europe/Athens'
 # That has access to the contest server.
 icpcadmin_pass: icpcadmin
 
+# Additional SSH public keys authorized for icpcadmin (and root).
+# files/secrets/icpcadmin@contestmanager.pub and local ~/.ssh/id_ed25519.pub / id_rsa.pub
+# are authorized automatically if present.
+icpcadmin_ssh_keys: []
+  # - "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAA..."
+
 languages:
   - c
   - cpp

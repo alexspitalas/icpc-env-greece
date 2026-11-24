@@ -41,11 +41,38 @@
       # - docker-compose-plugin
     state: present
 
+- name: Ensure /etc/docker directory exists
+  file:
+    path: /etc/docker
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+
+- name: Configure Docker log rotation to prevent unbounded judgedaemon log growth
+  copy:
+    dest: /etc/docker/daemon.json
+    owner: root
+    group: root
+    mode: '0644'
+    content: |
+      {
+        "log-driver": "json-file",
+        "log-opts": {
+          "max-size": "50m",
+          "max-file": "3"
+        }
+      }
+  notify: restart docker
+
 - name: Ensure Docker is started and enabled at boot
   systemd:
     name: docker
     enabled: yes
     state: started
+
+- name: Flush handlers so Docker restarts with daemon.json before pulling/running
+  meta: flush_handlers
 
 - name: Pull domjudge image
   docker_image:

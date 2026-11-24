@@ -45,11 +45,18 @@ apt-get clean
 rm -rf /var/lib/apt/lists
 mkdir -p /var/lib/apt/lists/partial
 
-# enable the firewall
-ufw --force enable
+# Ensure OpenSSH is allowed in UFW; keep firewall disabled on judgehosts (matches playbooks/firewall.yaml)
+ufw allow OpenSSH || true
+ufw --force disable || true
 
 # Delete /etc/machine-id so the image generates a new one on boot
 echo "" > /etc/machine-id
+
+# Remove build-VM persistent journal logs
+if [ -d /var/log/journal ]; then
+  systemctl stop systemd-journald.socket systemd-journald.service 2>/dev/null || true
+  rm -rf /var/log/journal/*
+fi
 
 # make sure wireguard config is wiped so it can be generated for each system on boot
 #systemctl stop wg-setup

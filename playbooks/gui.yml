@@ -25,8 +25,7 @@
       - desktop-base
       - tango-icon-theme
       - thunar-volman
-      # power management/terminal
-      - xfce4-power-manager
+      # terminal (omit xfce4-power-manager on judgehosts so it cannot alter CPU power/sleep states)
       - xfce4-terminal
 
 

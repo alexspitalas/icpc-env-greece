@@ -29,13 +29,68 @@
 - name: push a better default network interfaces file
   copy: src=files/01-netcfg.yaml dest=/etc/netplan/01-netcfg.yaml
 
-- name: disable console blanking and force cgroupv1
-  lineinfile: 
-    dest=/etc/default/grub
-    regexp="^GRUB_CMDLINE_LINUX_DEFAULT"
-    line='GRUB_CMDLINE_LINUX_DEFAULT="cgroup_enable=memory swapaccount=1 systemd.unified_cgroup_hierarchy=0 biosdevname=0 consoleblank=0 net.ifnames=0"'
-    state=present
+- name: disable console blanking, keep cgroup v2 for DOMjudge 9+, disable SMT/deep C-states, and apply GPU/PCIe stability params
+  lineinfile:
+    dest: /etc/default/grub
+    regexp: "^GRUB_CMDLINE_LINUX_DEFAULT"
+    line: 'GRUB_CMDLINE_LINUX_DEFAULT="cgroup_enable=memory swapaccount=1 nosmt intel_idle.max_cstate=1 processor.max_cstate=1 intel_iommu=off pcie_aspm=off nouveau.noaccel=1 i915.enable_psr=0 biosdevname=0 consoleblank=0 net.ifnames=0"'
+    state: present
   notify: update grub
+
+- name: configure sysctl settings for deterministic judgehost timing
+  copy:
+    dest: /etc/sysctl.d/99-domjudge-judgehost.conf
+    mode: '0644'
+    content: |
+      # Disable ASLR for reproducible memory layout/timings (DOMjudge manual recommendation)
+      kernel.randomize_va_space = 0
+      # Avoid swap jitter during judging
+      vm.swappiness = 0
+
+- name: install judgehost CPU stabilization script
+  copy:
+    src: files/scripts/judgehost-tuning.sh
+    dest: /usr/local/sbin/judgehost-tuning.sh
+    owner: root
+    group: root
+    mode: '0755'
+
+- name: install judgehost CPU stabilization systemd service
+  copy:
+    src: files/judgehost-tuning.service
+    dest: /etc/systemd/system/judgehost-tuning.service
+    owner: root
+    group: root
+    mode: '0644'
+
+- name: enable judgehost-tuning service
+  systemd:
+    name: judgehost-tuning.service
+    enabled: yes
+    daemon_reload: yes
+
+- name: disable noisy background timers and services on judgehosts
+  shell: |
+    for unit in \
+      apt-daily.timer \
+      apt-daily-upgrade.timer \
+      man-db.timer \
+      fstrim.timer \
+      e2scrub_all.timer \
+      motd-news.timer \
+      dpkg-db-backup.timer \
+      logrotate.timer \
+      cups.service \
+      cups.socket \
+      cups-browsed.service \
+      power-profiles-daemon.service \
+      warm-fs-cache.service
+    do
+      if systemctl list-unit-files "$unit" --no-legend 2>/dev/null | grep -q .; then
+        systemctl disable --now "$unit" 2>/dev/null || true
+      fi
+    done
+  changed_when: false
 
 - name: journald write to /dev/tty1
   copy: src=files/systemd-journald.conf dest=/etc/systemd/journald.conf

@@ -9,5 +9,5 @@ else
     # Start all stopped containers
     docker start $stopped_containers
     echo "Started the following containers:"
-    docker ps --filter "id=$stopped_containers"
+    docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Image}}"
 fi
