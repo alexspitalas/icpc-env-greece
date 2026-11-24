@@ -24,7 +24,8 @@ fi
 echo "Backing up critical files..."
 
 # Remove any legacy JetBrains backup under /root/.config (never back up user-controlled
-# ~/.config/JetBrains as root — JetBrains defaults and CLion's clion.key live in /etc/skel/.config/JetBrains).
+# ~/.config/JetBrains as root — CLion's clion.key is recreated at login by autostart and
+# IntelliJ defaults live in /etc/skel/.config/JetBrains).
 rm -rf /root/.config/JetBrains
 
 # Backup system desktop entries (in case they get deleted)
