@@ -298,23 +298,38 @@ class Whiptail:
 
 		return self.run("textbox", os.fspath(path), extra_args=["--scrolltext"]).returncode
 
-	def calc_height(self, msg: str) -> List[str]:
+	def calc_height(self, msg: str, num_items: Optional[int] = None) -> List[str]:
 		"""
-		Calculate the height of the dialog box based on the message.
+		Calculate the list height of the dialog box based on the message and item count.
 
 		:param msg: The message to display in the dialog box
+		:param num_items: Optional number of list/menu items
 		"""
 
-		height_offset = 9 if msg else 7
+		width: Optional[int] = self.width
+		height: Optional[int] = self.height
 
-		if self.height is None:
-			width, height = get_terminal_size()
-			height = height - 2
-			height = height - (height % 5)
-		else:
-			height = self.height
+		if height is None or width is None:
+			term_w, term_h = get_terminal_size()
+			if width is None:
+				width = term_w - 10
+				width = width - (width % 10)
+			if height is None:
+				height = term_h - 2
+				height = height - (height % 5)
 
-		return [str(height - height_offset)]
+		inner_width = max(10, width - 4)
+		msg_lines = 0
+		if msg:
+			for line in msg.splitlines():
+				msg_lines += max(1, (len(line) + inner_width - 1) // inner_width)
+
+		height_offset = (8 + msg_lines) if msg else 7
+		available = max(1, height - height_offset)
+		if num_items is not None and num_items > 0:
+			available = min(available, num_items)
+
+		return [str(available)]
 
 	def menu(
 			self,
@@ -347,7 +362,7 @@ class Whiptail:
 			items = cast(Sequence[Iterable[str]], items)
 			parsed_items = [(k, prefix + v) for k, v in items]
 
-		extra = self.calc_height(msg) + _flatten(parsed_items)
+		extra = self.calc_height(msg, num_items=len(parsed_items)) + _flatten(parsed_items)
 		returncode, val = self.run("menu", msg, extra_values=extra)
 		return val, returncode
 
@@ -376,7 +391,7 @@ class Whiptail:
 			items = cast(Sequence[Iterable[str]], items)
 			parsed_items = [(k, prefix + v, s) for k, v, s in items]
 
-		extra = self.calc_height(msg) + _flatten(parsed_items)
+		extra = self.calc_height(msg, num_items=len(parsed_items)) + _flatten(parsed_items)
 		returncode, val = self.run(control, msg, extra_values=extra)
 		return shlex.split(val), returncode
 
