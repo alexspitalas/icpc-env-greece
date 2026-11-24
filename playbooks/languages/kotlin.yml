@@ -123,53 +123,51 @@
     content: |
       rootProject.name = "offline-seed"
 
-- name: Write seed project build.gradle.kts
-  copy:
-    dest: /tmp/gradle-seed-project/build.gradle.kts
-    content: |
-      plugins {
-          kotlin("jvm") version "2.2.0"
-      }
-      repositories {
-          mavenCentral()
-      }
-      dependencies {
-          implementation(kotlin("stdlib"))
-      }
-      // Custom task: forces all resolvable configurations to actually download
-      // their JARs into the Gradle cache without spawning a Kotlin compiler daemon.
-      tasks.register("resolveDeps") {
-          doLast {
-              configurations
-                  .filter { it.isCanBeResolved }
-                  .forEach { config ->
-                      try {
-                          config.resolve()
-                          println("[seed] resolved: ${config.name}")
-                      } catch (e: Exception) {
-                          logger.warn("[seed] could not resolve ${config.name}: ${e.message}")
-                      }
-                  }
-          }
-      }
-
 - name: Write seed Kotlin source file
   copy:
     dest: /tmp/gradle-seed-project/src/main/kotlin/Main.kt
     content: |
       fun main() = println("hello")
 
-- name: Resolve and cache all Kotlin + Gradle dependencies (no compiler daemon spawned)
-  # Runs a custom 'resolveDeps' task that calls config.resolve() on all resolvable
-  # configurations. This forces Gradle to download all JARs (kotlin-stdlib, KGP, etc.)
-  # into /opt/gradle-home/caches WITHOUT spawning a Kotlin compiler daemon.
-  # The 'dependencies' task only downloads POMs to print the tree — not the JARs.
-  command: >
-    /opt/gradle/gradle-8.14.3/bin/gradle
-    --project-dir /tmp/gradle-seed-project
-    --gradle-user-home /opt/gradle-home
-    --no-daemon
-    resolveDeps
+# Seed Gradle cache for BOTH 2.2.20 (IntelliJ IDEA 2025.2.4 wizard default from
+# compatibility/wizard_versions.json) and 2.2.0 (matching standalone /opt/kotlinc).
+- name: Resolve and cache Kotlin + Gradle dependencies for 2.2.20 and 2.2.0 (no compiler daemon spawned)
+  shell: |
+    set -euo pipefail
+    for KVER in 2.2.20 2.2.0; do
+      cat > /tmp/gradle-seed-project/build.gradle.kts <<EOF
+    plugins {
+        kotlin("jvm") version "$KVER"
+    }
+    repositories {
+        mavenCentral()
+    }
+    dependencies {
+        implementation(kotlin("stdlib"))
+    }
+    tasks.register("resolveDeps") {
+        doLast {
+            configurations
+                .filter { it.isCanBeResolved }
+                .forEach { config ->
+                    try {
+                        config.resolve()
+                        println("[seed $KVER] resolved: \${config.name}")
+                    } catch (e: Exception) {
+                        logger.warn("[seed $KVER] could not resolve \${config.name}: \${e.message}")
+                    }
+                }
+        }
+    }
+    EOF
+      /opt/gradle/gradle-8.14.3/bin/gradle \
+        --project-dir /tmp/gradle-seed-project \
+        --gradle-user-home /opt/gradle-home \
+        --no-daemon \
+        resolveDeps
+    done
+  args:
+    executable: /bin/bash
   environment:
     JAVA_HOME: /usr/lib/jvm/java-21-openjdk-amd64
     PATH: /usr/lib/jvm/java-21-openjdk-amd64/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
@@ -217,6 +215,9 @@
     -Dartifact="org.jetbrains.kotlin:kotlin-stdlib:{{ item }}"
     -Dmaven.repo.local="/opt/m2/repository"
   loop:
+    - "2.2.21"
+    - "2.2.20"
+    - "2.2.10"
     - "2.2.0"
     - "2.1.21"
     - "2.1.10"
@@ -238,6 +239,9 @@
     -Dartifact="org.jetbrains.kotlin:kotlin-stdlib-jdk8:{{ item }}"
     -Dmaven.repo.local="/opt/m2/repository"
   loop:
+    - "2.2.21"
+    - "2.2.20"
+    - "2.2.10"
     - "2.2.0"
     - "2.1.21"
     - "2.1.10"
@@ -259,6 +263,9 @@
     -Dartifact="org.jetbrains.kotlin:kotlin-reflect:{{ item }}"
     -Dmaven.repo.local="/opt/m2/repository"
   loop:
+    - "2.2.21"
+    - "2.2.20"
+    - "2.2.10"
     - "2.2.0"
     - "2.1.21"
     - "2.1.10"
@@ -273,6 +280,16 @@
     HTTPS_PROXY: ""
   become: yes
   ignore_errors: true
+
+- name: Verify IDEA 2025.2.4 wizard Kotlin stdlib (2.2.20 and 2.1.21) exist in /opt/m2/repository
+  stat:
+    path: "{{ item }}"
+  loop:
+    - /opt/m2/repository/org/jetbrains/kotlin/kotlin-stdlib/2.2.20/kotlin-stdlib-2.2.20.jar
+    - /opt/m2/repository/org/jetbrains/kotlin/kotlin-stdlib-jdk8/2.1.21/kotlin-stdlib-jdk8-2.1.21.jar
+  register: m2_kotlin_verify
+  failed_when: not m2_kotlin_verify.stat.exists
+  become: yes
 
 # Strip Maven remote-origin markers (_remote.repositories / *.lastUpdated) left by
 # `mvn dependency:get`. In offline mode, IntelliJ's Maven Resolver (Aether) refuses to
