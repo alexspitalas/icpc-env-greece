@@ -16,17 +16,19 @@
       Type=Application
       Terminal=false
   loop:
-    - { name: 'Firefox', exec: 'firefox %u', icon: 'firefox' }
     - { name: 'Guide', exec: 'firefox /htmlfile/documentHtml/index.html', icon: 'firefox' }
 
-# Keep utility launchers out of sight on the main Desktop (placed in ~/Documents/System Tools instead)
-- name: Remove legacy Refresh Connection desktop shortcut template
+# Keep utility launchers out of sight on the main Desktop (placed in ~/Documents/System Tools instead),
+# and remove duplicate Firefox desktop icon (Guide already opens Firefox to the guide homepage).
+- name: Remove legacy Refresh Connection and duplicate Firefox desktop shortcut templates
   file:
     path: "{{ item }}"
     state: absent
   loop:
     - /root/DesktopTemplates/Refresh Connection.desktop
     - /home/contestant/Desktop/Refresh Connection.desktop
+    - /root/DesktopTemplates/Firefox.desktop
+    - /home/contestant/Desktop/Firefox.desktop
 
 - name: Ensure Documents/System Tools directory exists in skel
   file:

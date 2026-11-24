@@ -135,3 +135,86 @@
     - thunar-bulk-rename.desktop      # System->Bulk Rename
     - xfce4-mail-reader.desktop       # Mail Reader
     - thunar-volman-settings.desktop  # Removable devices and media
+
+# Set Firefox as the system-wide and XFCE default web browser (covers xdg-open,
+# Debian alternatives, XFCE Web Browser launcher, and IDE/terminal URL opens).
+- name: set Firefox as system-wide default browser via update-alternatives
+  alternatives:
+    name: "{{ item }}"
+    link: "/usr/bin/{{ item }}"
+    path: /usr/bin/firefox
+    priority: 200
+  loop:
+    - x-www-browser
+    - gnome-www-browser
+
+- name: ensure XDG and XFCE config directories exist for default browser settings
+  file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+  loop:
+    - /etc/xdg
+    - /etc/xdg/xfce4
+    - /etc/skel/.config
+    - /etc/skel/.config/xfce4
+
+- name: set Firefox as default XDG MIME handler for HTTP/HTTPS/HTML
+  copy:
+    dest: "{{ item }}"
+    owner: root
+    group: root
+    mode: '0644'
+    content: |
+      [Default Applications]
+      x-scheme-handler/http=firefox.desktop
+      x-scheme-handler/https=firefox.desktop
+      x-scheme-handler/about=firefox.desktop
+      x-scheme-handler/unknown=firefox.desktop
+      text/html=firefox.desktop
+      application/xhtml+xml=firefox.desktop
+  loop:
+    - /etc/xdg/mimeapps.list
+    - /etc/skel/.config/mimeapps.list
+
+- name: set Firefox as default XFCE preferred web browser (helpers.rc)
+  copy:
+    dest: "{{ item }}"
+    owner: root
+    group: root
+    mode: '0644'
+    content: |
+      WebBrowser=firefox
+  loop:
+    - /etc/xdg/xfce4/helpers.rc
+    - /etc/skel/.config/xfce4/helpers.rc
+
+- name: check if contestant home exists for default browser config sync
+  stat:
+    path: /home/contestant
+  register: gui_contestant_home
+
+- name: sync default browser configs into existing contestant home
+  when: gui_contestant_home.stat.exists and gui_contestant_home.stat.isdir
+  block:
+    - name: ensure contestant xfce4 config directory exists
+      file:
+        path: /home/contestant/.config/xfce4
+        state: directory
+        owner: contestant
+        group: contestant
+        mode: '0755'
+
+    - name: copy mimeapps.list and xfce4 helpers.rc into contestant home
+      copy:
+        src: "/etc/skel/.config/{{ item }}"
+        dest: "/home/contestant/.config/{{ item }}"
+        remote_src: yes
+        owner: contestant
+        group: contestant
+        mode: '0644'
+      loop:
+        - mimeapps.list
+        - xfce4/helpers.rc

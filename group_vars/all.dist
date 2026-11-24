@@ -235,6 +235,8 @@ firefox_default_policies:
   CaptivePortal: false
   # Prevent updating (shouldn't happen on linux, but we want to avoid it anyway)
   DisableAppUpdate: true
+  # Don't nag to check/set default browser (already configured system-wide)
+  DontCheckDefaultBrowser: true
   # Prevent first run page/post update pages from showing up
   OverrideFirstRunPage: ""
   OverridePostUpdatePage: ""

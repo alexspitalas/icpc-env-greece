@@ -31,22 +31,35 @@
   become: yes
   when: "'intellij-clion' in devtools and clion_license_key is defined and clion_license_key | length > 0"
 
-# ── Strip bundled AI / local LLM / remote-collab plugins from all JetBrains IDEs ──
-# Modern JetBrains IDEs (2025.2+) bundle `fullLine` (an offline local transformer LLM
-# for full-line code generation), `turboComplete`, `mcpserver`, `cwm-plugin` (Code With Me),
-# and in newer builds AI Assistant / Junie plugins. Removing the plugin directories under
-# /opt/jetbrains prevents contestants from using offline AI or re-enabling them in user config.
-- name: Remove bundled AI, local LLM, MCP, and remote-collaboration plugins from JetBrains IDEs
+# ── Strip bundled AI / local LLM / MCP / remote-collab & high-impact unused plugins ──
+# Modern JetBrains IDEs (2025.2+) bundle `fullLine` (offline local LLM for full-line code
+# completion), `mcpserver` (MCP server for external AI agents), `cwm-plugin` (Code With Me),
+# and large unused enterprise/cloud/localization plugins (Qodana, SVN/Hg/Perforce/GitHub/GitLab,
+# CJK language packs, async performance profiler, ML search). Every directory listed here has
+# zero required dependencies from core Java/Kotlin/Python/C++ IDE plugins.
+- name: Remove bundled AI, local LLM, MCP, remote-collab, and high-impact unused plugins from JetBrains IDEs
   shell: |
     removed=0
     for ide_dir in /opt/jetbrains/*; do
       [ -d "$ide_dir/plugins" ] || continue
-      for p in fullLine turboComplete mcpserver cwm-plugin settingsSync ml-llm ai-assistant llm junie; do
+      for p in \
+        fullLine turboComplete cwm-plugin settingsSync \
+        ml-llm ai-assistant llm junie \
+        searchEverywhereMl marketplaceMl station-plugin \
+        qodana kotlin-jupyter-plugin performanceTesting-async \
+        vcs-svn vcs-hg vcs-perforce vcs-github vcs-github-IU vcs-gitlab vcs-gitlab-IU \
+        localization-ja localization-ko localization-zh; do
         if [ -e "$ide_dir/plugins/$p" ]; then
           rm -rf "$ide_dir/plugins/$p"
           removed=1
         fi
       done
+      # Also catch any casing/hyphen variants of MCP Server or Copilot plugins (e.g. mcpserver, mcp-server, mcpServer)
+      while IFS= read -r match; do
+        [ -n "$match" ] || continue
+        rm -rf "$match"
+        removed=1
+      done < <(find "$ide_dir/plugins" -maxdepth 1 -mindepth 1 \( -iname 'mcp*' -o -iname '*copilot*' \) 2>/dev/null)
     done
     [ "$removed" -eq 1 ] && echo "removed" || true
   args:
