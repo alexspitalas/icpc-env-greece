@@ -17,6 +17,10 @@
 - name: install and configure wireless networking (NetworkManager + nm-applet)
   when: wireless_enabled | default(false) | bool
   block:
+    - name: ensure Wi-Fi kernel modules are not blacklisted when wireless is enabled
+      file:
+        path: /etc/modprobe.d/blacklist-icpc-wifi.conf
+        state: absent
     # Installed before changing 10-globally-managed-devices.conf so Ubuntu's default
     # keeps eth0 unmanaged during the build VM session and SSH stays up.
     # install_recommends: false + explicit policykit-1-gnome prevents network-manager-gnome
@@ -191,6 +195,19 @@
         owner: root
         group: root
         mode: '0600'
+
+    - name: blacklist Wi-Fi kernel modules when wireless is disabled
+      copy:
+        dest: /etc/modprobe.d/blacklist-icpc-wifi.conf
+        owner: root
+        group: root
+        mode: '0644'
+        content: |
+          # Managed by Ansible (playbooks/wireless.yml, wireless_enabled: false)
+          blacklist cfg80211
+          blacklist mac80211
+          install cfg80211 /bin/true
+          install mac80211 /bin/true
 
     - name: ensure systemd-networkd services are enabled
       systemd:

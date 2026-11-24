@@ -133,6 +133,73 @@
     path: /etc/modprobe.d/blacklist-uas.conf
     state: absent
 
+# On internal-SSD installs, block USB mass-storage drives (flash drives / external HDDs)
+# at the kernel module level so contestants cannot attach USB storage at all.
+# USB keyboards and mice use usbhid and remain unaffected. On USB-boot installs this
+# file is removed because the OS itself boots from usb-storage.
+- name: blacklist USB mass-storage kernel modules on ssd installs
+  when: sys_install_target == 'ssd'
+  copy:
+    dest: /etc/modprobe.d/blacklist-icpc-usb-storage.conf
+    owner: root
+    group: root
+    mode: '0644'
+    content: |
+      # Managed by Ansible (playbooks/system.yml, install_target: ssd)
+      # Disable external USB mass-storage devices on internal-SSD workstations
+      blacklist usb-storage
+      blacklist uas
+      install usb-storage /bin/true
+      install uas /bin/true
+  notify: update initramfs
+
+- name: ensure USB mass-storage is NOT blacklisted on usb-boot installs
+  when: sys_install_target == 'usb'
+  file:
+    path: /etc/modprobe.d/blacklist-icpc-usb-storage.conf
+    state: absent
+  notify: update initramfs
+
+# Block Bluetooth, smartphone USB tethering (Android RNDIS, iPhone ipheth), and
+# cellular/LTE/5G modems so contestants cannot attach a phone or BT tether to bypass
+# the contest network. Standard USB-Ethernet adapters (r8152, ax88179_178a, cdc_ether,
+# cdc_ncm) are intentionally left allowed for laptops without built-in RJ45 ports.
+- name: blacklist bluetooth, smartphone USB tethering, and cellular modem kernel modules
+  copy:
+    dest: /etc/modprobe.d/blacklist-icpc-net.conf
+    owner: root
+    group: root
+    mode: '0644'
+    content: |
+      # Managed by Ansible (playbooks/system.yml)
+      # Disable Bluetooth (PAN tethering / file transfer)
+      blacklist bluetooth
+      blacklist btusb
+      blacklist bnep
+      blacklist rfcomm
+      blacklist btintel
+      blacklist btrtl
+      blacklist btbcm
+      install bluetooth /bin/true
+      install btusb /bin/true
+      install bnep /bin/true
+      install rfcomm /bin/true
+      install btintel /bin/true
+      install btrtl /bin/true
+      install btbcm /bin/true
+
+      # Disable smartphone USB tethering and cellular/WWAN modems
+      blacklist ipheth
+      blacklist rndis_host
+      blacklist qmi_wwan
+      blacklist cdc_mbim
+      blacklist cdc_wdm
+      install ipheth /bin/true
+      install rndis_host /bin/true
+      install qmi_wwan /bin/true
+      install cdc_mbim /bin/true
+      install cdc_wdm /bin/true
+
 - name: check if fstrim.timer unit exists
   command: systemctl list-unit-files fstrim.timer
   register: fstrim_timer_check

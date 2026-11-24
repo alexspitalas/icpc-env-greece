@@ -396,6 +396,15 @@ def configure_domjudge(
             if not entered_user:
                 w.msgbox("Team username cannot be empty.")
                 continue
+            if len(entered_user) > 128 or any(
+                ord(ch) < 33 or ord(ch) > 126 or ch in {'"', "'", "\\", "%"}
+                for ch in entered_user
+            ):
+                w.msgbox(
+                    "Team username contains invalid characters.\n\n"
+                    "Spaces, quotes, backslashes, '%', and non-ASCII characters are not allowed."
+                )
+                continue
             username = entered_user
             if return_to_confirm:
                 return_to_confirm = False
@@ -422,6 +431,9 @@ def configure_domjudge(
             entered_pass = entered_pass.replace("\r", "").replace("\n", "")
             if not entered_pass:
                 w.msgbox("Team password cannot be empty.")
+                continue
+            if any(ord(ch) < 32 or ord(ch) == 127 for ch in entered_pass):
+                w.msgbox("Team password contains invalid control characters.")
                 continue
             password = entered_pass
             return_to_confirm = False

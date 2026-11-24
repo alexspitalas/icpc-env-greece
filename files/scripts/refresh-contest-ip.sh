@@ -47,7 +47,7 @@ fi
 
 # Fallback defaults if ACL file is missing or empty
 if [ ${#DOMAINS[@]} -eq 0 ]; then
-    DOMAINS=("grcpc.gr" "cppreference.com" "docs.python.org" "docs.oracle.com" "domjudge.org")
+    DOMAINS=("grcpc.gr")
 fi
 
 FAILURES=0

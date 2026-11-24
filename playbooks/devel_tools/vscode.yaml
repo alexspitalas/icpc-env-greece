@@ -17,16 +17,23 @@
   loop: "{{ vscode_extensions }}"
 
 # Remove AI-assisted extensions (ICPC rules prohibit AI code completion/chat;
-# also cleans up any leftover or transitively-installed IntelliCode/Copilot extensions).
+# also cleans up any leftover, transitively-installed, or built-in AI/Copilot extensions).
 - name: ensure AI-driven VS Code extensions are not installed
   shell: |
     installed=$(code --extensions-dir /opt/vscode/extensions --user-data-dir /opt/vscode --no-sandbox --list-extensions 2>/dev/null || true)
     removed=0
-    for ext in visualstudioexptteam.vscodeintellicode visualstudioexptteam.intellicode-api-usage-examples github.copilot github.copilot-chat; do
-      if printf '%s\n' "$installed" | grep -iqx "$ext"; then
+    while IFS= read -r ext; do
+      [ -n "$ext" ] || continue
+      if printf '%s\n' "$ext" | grep -iqE '(copilot|intellicode|codeium|tabnine|continue\.continue|sourcegraph\.cody|amazon-q|supermaven|anthropic|openai|chatgpt)'; then
         if code --extensions-dir /opt/vscode/extensions --user-data-dir /opt/vscode --no-sandbox --uninstall-extension "$ext"; then
           removed=1
         fi
+      fi
+    done <<< "$installed"
+    for d in /usr/share/code/resources/app/extensions/*copilot*; do
+      if [ -e "$d" ]; then
+        rm -rf "$d"
+        removed=1
       fi
     done
     [ "$removed" -eq 1 ] && echo "removed" || true
@@ -204,6 +211,9 @@
     defaults = {
         "chat.disableAIFeatures": True,
         "chat.commandCenter.enabled": False,
+        "chat.agent.enabled": False,
+        "inlineChat.enabled": False,
+        "github.copilot.enable": {"*": False},
         "workbench.secondarySideBar.defaultVisibility": "hidden",
         "security.workspace.trust.enabled": False,
         "C_Cpp.intelliSenseEngine": "default",

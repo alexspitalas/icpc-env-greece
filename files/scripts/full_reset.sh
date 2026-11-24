@@ -23,8 +23,9 @@ rm -f /icpc/PRINT_TEAM
 /icpc/scripts/deleteUser.sh
 rm -f /home/contestant/.netrc
 
-# make sure the firewall is on
+# make sure the firewall is on and reloaded (ensuring xt_owner UID rules are current)
 ufw --force enable
+ufw reload >/dev/null 2>&1 || true
 
 rm -f /icpc/setup-complete
 rm -f /icpc/TEAM*

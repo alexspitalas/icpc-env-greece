@@ -19,6 +19,7 @@ import os
 from pathlib import Path
 import pwd
 import shlex
+import shutil
 import socket
 import subprocess
 import threading
@@ -68,6 +69,12 @@ def read_text_stripped(path: Path) -> str:
         return ""
 
 
+def is_safe_username(username: str) -> bool:
+    if not username or len(username) > 128:
+        return False
+    return all(33 <= ord(ch) <= 126 and ch not in {'"', "'", "\\", "%"} for ch in username)
+
+
 def read_credentials(path: Path):
     if not path.exists():
         return None, None
@@ -75,7 +82,11 @@ def read_credentials(path: Path):
         data = json.loads(path.read_text(encoding="utf-8"))
         username = str(data.get("username", "")).strip()
         password = str(data.get("password", ""))
-        if username and password:
+        if (
+            is_safe_username(username)
+            and password
+            and not any(ord(ch) < 32 or ord(ch) == 127 for ch in password)
+        ):
             return username, password
     except Exception:
         pass
@@ -234,6 +245,7 @@ def main():
             write_if_changed(icpc_dir / "TEAM", team_display + "\n", 0o644, 0, 0)
 
             if autologin_path.parent.exists():
+                prev_autologin = autologin_path.read_text(encoding="utf-8") if autologin_path.exists() else "# Placeholder\n"
                 base_no_slash = domjudge_url.rstrip("/")
                 escaped_base = escape_ere(base_no_slash)
                 login_regex = f"^{escaped_base}/login($|\\?)"
@@ -250,7 +262,18 @@ def main():
                     "request_header_access Authorization allow all\n"
                     f'request_header_add Authorization "Basic {b64_basic}" domjudge_api\n'
                 )
-                squid_changed = write_if_changed(autologin_path, autologin_content, 0o640, 0, proxy_gid) or squid_changed
+                wrote = write_if_changed(autologin_path, autologin_content, 0o640, 0, proxy_gid)
+                if wrote and squid_dir == Path("/etc/squid") and shutil.which("squid"):
+                    check = subprocess.run(
+                        ["squid", "-k", "parse", "-f", "/etc/squid/squid.conf"],
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.PIPE,
+                        check=False,
+                    )
+                    if check.returncode != 0:
+                        write_if_changed(autologin_path, prev_autologin, 0o640, 0, proxy_gid)
+                        wrote = False
+                squid_changed = wrote or squid_changed
         else:
             if autologin_path.parent.exists():
                 squid_changed = write_if_changed(autologin_path, "# Placeholder\n", 0o640, 0, proxy_gid) or squid_changed

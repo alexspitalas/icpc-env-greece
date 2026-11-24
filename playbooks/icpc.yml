@@ -5,6 +5,18 @@
 - name: copy icpc scripts
   copy: src=files/scripts dest=/icpc mode=0755
 
+- name: remove legacy/unused scripts and systemd unit if present from earlier builds
+  file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - /icpc/scripts/firewall.sh
+    - /icpc/scripts/disableFirewall.sh
+    - /icpc/scripts/enableFirewall.sh
+    - /icpc/scripts/checkFirewall.sh
+    - /icpc/scripts/firstLogin.sh
+    - /etc/systemd/system/icpc-firewall.service
+
 - name: add a supported_languages file
   copy:
     dest: /icpc/supported_languages
@@ -421,10 +433,12 @@
 
 - name: create full reset group
   group: name='fullreset' state='present'
-# NOTE: fullreset is intentionally NOT in sudo/adm. Anyone at the greeter can log in
-# to it without a password (via nopasswdlogin), so it may only start icpc-full-reset.service.
+# NOTE: fullreset is intentionally NOT in sudo/adm AND NOT in nopasswdlogin.
+# Unlike teamreset (which is passwordless at the greeter), fullreset wipes setup state
+# and DOMjudge credentials (triggering firstboot setup on reboot), so LightDM requires
+# the admin password (icpcadmin_pass) to log in as fullreset.
 - name: create full reset user
-  user: name='fullreset' comment="Full Reset" group='fullreset' groups='nopasswdlogin' append=no createhome=no password='{{icpcadmin_pass | password_hash('sha512') }}' shell='/bin/bash'
+  user: name='fullreset' comment="Full Reset" group='fullreset' groups='' append=no createhome=no password='{{icpcadmin_pass | password_hash('sha512') }}' shell='/bin/bash'
 - name: make home folder/autostart path for fullreset
   file: state=directory path=/home/fullreset/.config/autostart owner=fullreset group=fullreset
 - name: create system-wide autostart file for the full reset
@@ -446,7 +460,7 @@
       # teamreset (passwordless greeter login) may ONLY start the reset unit (exact arguments,
       # no shell, no other commands)
       teamreset ALL=(root) NOPASSWD: /usr/bin/systemctl start --no-block icpc-team-reset.service
-      # fullreset (passwordless greeter login) may ONLY start the full reset unit
+      # fullreset (password-protected greeter login) may ONLY start the full reset unit
       fullreset ALL=(root) NOPASSWD: /usr/bin/systemctl start --no-block icpc-full-reset.service
       # contestant can refresh the contest connection without a password
       contestant ALL=(root) NOPASSWD: /icpc/scripts/refresh-contest-ip.sh ""
@@ -480,17 +494,30 @@
 - name: if there is an icpc partition
   when: icpc_partition.rc == 0
   block:
+  - name: read GPT PARTUUID of the built-in ICPC partition (survives mkfs.vfat and prevents rogue USB LABEL=ICPC mounts)
+    shell: blkid -s PARTUUID -o value -L "ICPC"
+    register: icpc_partuuid
+    changed_when: false
+    failed_when: false
+  - name: record ICPC partition PARTUUID for deleteUser.sh
+    when: icpc_partuuid.stdout | default('') | trim | length > 0
+    copy:
+      dest: /icpc/ICPC_PARTUUID
+      content: "{{ icpc_partuuid.stdout | trim }}\n"
+      owner: root
+      group: root
+      mode: '0644'
   - name: create mountpoint
     file: path=/mnt/usbdrive state=directory
   - name: mount fat32 partition
-    mount: >
-      name=/mnt/usbdrive
-      src='LABEL=ICPC'
-      fstype=vfat
-      opts="defaults,uid=contestant,gid=contestant"
-      state=present
+    mount:
+      path: /mnt/usbdrive
+      src: "{{ ('PARTUUID=' ~ (icpc_partuuid.stdout | trim)) if (icpc_partuuid.stdout | default('') | trim | length > 0) else 'LABEL=ICPC' }}"
+      fstype: vfat
+      opts: "defaults,nofail,noexec,nosuid,nodev,uid=contestant,gid=contestant"
+      state: present
 
-- name: Fix CLion config ownership for contestant user
+- name: Fix config ownership for contestant user
   file:
     path: "/home/contestant/.config"
     state: directory
@@ -498,11 +525,10 @@
     owner: contestant
     group: contestant
 
-- name: Ensure .config directory has correct permissions
+- name: Ensure .config directory itself has 0755 permissions (without overwriting file modes such as 0600 clion.key)
   file:
     path: "/home/contestant/.config"
     state: directory
     mode: '0755'
     owner: contestant
     group: contestant
-    recurse: yes

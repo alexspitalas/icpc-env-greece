@@ -132,12 +132,16 @@ node_exporter_allowed_ips: []
 # Optional extra CLI flags passed to node_exporter (e.g. "--collector.systemd")
 node_exporter_extra_args: ""
 
+# Documentation (cppreference, Python 3.12, Java 21, Kotlin, DOMjudge 9.0) is
+# hosted offline on http://localhost/ (/opt/localwww), so only contest servers
+# need to be listed here. Uncomment the documentation domains below only if you
+# explicitly want to allow online documentation access.
 allowed_domains:
-  - cppreference.com
-  - docs.python.org
-  - docs.oracle.com
-  - domjudge.org
   - grcpc.gr
+#  - cppreference.com
+#  - docs.python.org
+#  - docs.oracle.com
+#  - domjudge.org
 #  - seerc2025.algotester.com
 #  - seerc.euc.icpc.global
 #  - scoreboard-seerc.icpc.global
@@ -208,7 +212,7 @@ firefox_policies:
   DisplayBookmarksToolbar: true
   Bookmarks:
 #   - Title: "Programming Docs"
-#     URL: "file:///opt/localwww/index.html"
+#     URL: "http://localhost/index.html"
 #     Placement: "toolbar"
     - Title: "Help Guide"
       URL: "file:///htmlfile/documentHtml/index.html"
@@ -236,9 +240,31 @@ firefox_default_policies:
   OverridePostUpdatePage: ""
   # What it says on the tin. This is to prevent a banner on first start about what it's sharing
   DisableTelemetry: true
-  # Disable DNS over HTTPS (this might get around filters/things)
+  # Disable and lock DNS over HTTPS (prevents bypassing local filters)
   DNSOverHTTPS:
     Enabled: false
+    Locked: true
+  # Lock Firefox to the local Squid proxy (with localhost passthrough for local docs)
+  Proxy:
+    Mode: "manual"
+    HTTPProxy: "127.0.0.1:3128"
+    SSLProxy: "127.0.0.1:3128"
+    UseHTTPProxyForAllProtocols: true
+    Passthrough: "localhost, 127.0.0.1, ::1"
+    Locked: true
+  # Disable and lock Firefox built-in Generative AI / on-device ML features
+  GenerativeAI:
+    Enabled: false
+    Chatbot: false
+    LinkPreviews: false
+    TabGroups: false
+    Locked: true
+  # Prevent contestants from tampering with about:config or installing browser extensions
+  BlockAboutConfig: true
+  BlockAboutAddons: true
+  ExtensionSettings:
+    "*":
+      installation_mode: "blocked"
   # Install the squid CA so it can mitm things/properly filter the network
   Certificates: {
     ImportEnterpriseRoots: true,

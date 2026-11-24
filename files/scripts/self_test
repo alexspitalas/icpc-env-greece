@@ -300,6 +300,16 @@ else
   print_ok
 fi
 
+if command -v resolvectl >/dev/null 2>&1; then
+  print_check "Testing direct DNS resolution as contestant is disabled"
+  su - contestant -c 'resolvectl query google.com' >/dev/null 2>&1
+  if [ $? -eq 0 ]; then
+    print_fail
+  else
+    print_ok
+  fi
+fi
+
 echo
 echo "${BLUE}Compiler Versions${RESET}"
 if language_supported "erlang"; then

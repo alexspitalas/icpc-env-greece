@@ -256,4 +256,4 @@ ssh -i files/secrets/icpcadmin@contestmanager icpcadmin@<contestant-ip> "sudo /u
 To reset a contestant all you need to do is to `log out` from the contestant user and **log in** to the `Clear Team Account`. When you log in the reset script will automaticly start and it will recreate the `Contestant user` and will reboot the system. Saved DOMjudge team credentials (`/icpc/domjudge_credentials`) are preserved across `Clear Team Account` resets.
 In case you want to use the command you can run the `delete-user` command on the admin side.
 
-To perform a full reset (wipe the contestant account, setup completion state, and saved DOMjudge credentials so the machine prompts again on next boot), **log in** to `Full Reset` at the login screen or run `full-reset` (`sudo /icpc/scripts/full_reset.sh`) on the admin side.
+To perform a full reset (wipe the contestant account, setup completion state, and saved DOMjudge credentials so the machine prompts again on next boot), **log in** to `Full Reset` at the login screen (requires the `icpcadmin` password) or run `full-reset` (`sudo /icpc/scripts/full_reset.sh`) on the admin side.

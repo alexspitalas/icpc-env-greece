@@ -14,6 +14,38 @@
     loop_control:
       loop_var: language
 
+  - name: check if offline DOMjudge 9.0 manual archive exists in files/
+    stat:
+      path: files/domjudge-manual-9.0.tar.xz
+    delegate_to: 127.0.0.1
+    become: false
+    register: domjudge_manual_archive
+
+  - name: extract offline DOMjudge 9.0 manual
+    when: domjudge_manual_archive.stat.exists
+    unarchive:
+      src: files/domjudge-manual-9.0.tar.xz
+      dest: /opt
+      creates: /opt/domjudge-manual-9.0/index.html
+      owner: root
+      group: root
+      extra_opts: ['--no-same-owner']
+
+  - name: register offline DOMjudge 9.0 manual in lang_docs
+    when: domjudge_manual_archive.stat.exists
+    block:
+      - ansible.utils.update_fact:
+          updates:
+            - path: "lang_docs['DOMjudge']"
+              value:
+                name: DOMjudge 9.0 Manual
+                id: domjudge_manual
+                path: /opt/domjudge-manual-9.0
+                index: index.html
+        register: updated_domjudge_doc
+      - set_fact:
+          lang_docs: "{{ updated_domjudge_doc.lang_docs }}"
+
   - name: make sure web dir exists
     file: state=directory path=/opt/localwww
 

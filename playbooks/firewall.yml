@@ -60,6 +60,53 @@
     state: absent
   notify: restart systemd-resolved
 
+# Prevent DNS tunneling by blocking contestant/reset accounts from querying
+# systemd-resolved over local non-IP IPC (D-Bus org.freedesktop.resolve1 and the
+# Varlink Unix socket /run/systemd/resolve/io.systemd.Resolve). Squid (user 'proxy')
+# continues resolving allowed domains via /etc/resolv.conf (127.0.0.53:53), and
+# localhost/127.0.0.1 continues resolving via /etc/hosts ('files' in nsswitch.conf).
+- name: block contestant and reset accounts from systemd-resolved D-Bus API
+  copy:
+    dest: /etc/dbus-1/system.d/99-icpc-deny-resolve1.conf
+    owner: root
+    group: root
+    mode: '0644'
+    content: |
+      <!DOCTYPE busconfig PUBLIC
+       "-//freedesktop//DTD D-BUS Bus Configuration 1.0//EN"
+       "http://www.freedesktop.org/standards/dbus/1.0/busconfig.dtd">
+      <busconfig>
+        <policy user="contestant">
+          <deny send_destination="org.freedesktop.resolve1"/>
+        </policy>
+        <policy user="teamreset">
+          <deny send_destination="org.freedesktop.resolve1"/>
+        </policy>
+        <policy user="fullreset">
+          <deny send_destination="org.freedesktop.resolve1"/>
+        </policy>
+      </busconfig>
+  notify: reload dbus
+
+- name: ensure systemd-resolved drop-in directory exists
+  file:
+    path: /etc/systemd/system/systemd-resolved.service.d
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+
+- name: restrict systemd-resolved Varlink socket to root/systemd-resolve/adm (blocks contestant DNS tunneling)
+  copy:
+    dest: /etc/systemd/system/systemd-resolved.service.d/99-icpc-restrict-varlink.conf
+    owner: root
+    group: root
+    mode: '0644'
+    content: |
+      [Service]
+      ExecStartPost=+/bin/sh -c 'for s in /run/systemd/resolve/io.systemd.*; do if [ -S "$s" ]; then chown systemd-resolve:adm "$s" && chmod 0660 "$s"; fi; done'
+  notify: restart systemd-resolved
+
 - name: copy a pretty error page for squid to use
   template: src=files/squid/block.html.j2 dest=/usr/share/squid/errors/templates/ICPC_ERR_ACCESS_DENIED
 
