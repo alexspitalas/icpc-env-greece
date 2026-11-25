@@ -76,6 +76,79 @@
   register: jetbrains_ai_plugins_cleanup
   changed_when: "'removed' in (jetbrains_ai_plugins_cleanup.stdout | default(''))"
 
+# Modern JetBrains IDEs (2025.2+) load bundled plugin descriptors from the pre-compiled
+# binary index `plugins/plugin-classpath.txt` (format version 2) instead of scanning
+# `plugins/*` directories on disk. If we delete plugin folders without pruning them from
+# `plugin-classpath.txt`, deleted plugins (like fullLine/completionMlRanking) still appear
+# in Settings -> Plugins and deleted plugins (like Qodana) register ghost extensions that
+# throw ClassNotFoundException (e.g. breaking JarRepositoryManager for offline Kotlin).
+- name: Prune deleted plugins from JetBrains plugins/plugin-classpath.txt binary index
+  shell: |
+    python3 - <<'PYEOF'
+    import glob, os, struct, sys
+
+    changed = False
+    for ide_dir in sorted(glob.glob('/opt/jetbrains/*')):
+        plugins_dir = os.path.join(ide_dir, 'plugins')
+        cp_path = os.path.join(plugins_dir, 'plugin-classpath.txt')
+        if not os.path.isfile(cp_path):
+            continue
+        with open(cp_path, 'rb') as fh:
+            data = fh.read()
+        if len(data) < 8:
+            print(f"ERROR: {cp_path} too short ({len(data)} bytes)", file=sys.stderr)
+            sys.exit(1)
+        version, flag = data[0], data[1]
+        if version != 2:
+            print(f"ERROR: Unsupported plugin-classpath.txt format version {version} in {cp_path}", file=sys.stderr)
+            sys.exit(1)
+        pos = 2
+        core_len, = struct.unpack_from('>i', data, pos); pos += 4
+        core_xml = data[pos:pos + core_len]; pos += core_len
+        plugin_count, = struct.unpack_from('>H', data, pos); pos += 2
+        kept = []
+        pruned = []
+        for _ in range(plugin_count):
+            start = pos
+            file_count, = struct.unpack_from('>H', data, pos); pos += 2
+            dir_len, = struct.unpack_from('>H', data, pos); pos += 2
+            dir_name = data[pos:pos + dir_len].decode('utf-8'); pos += dir_len
+            xml_len, = struct.unpack_from('>i', data, pos); pos += 4
+            pos += xml_len
+            for _ in range(file_count):
+                f_len, = struct.unpack_from('>H', data, pos); pos += 2
+                pos += f_len
+            if os.path.isdir(os.path.join(plugins_dir, dir_name)):
+                kept.append(data[start:pos])
+            else:
+                pruned.append(dir_name)
+        if pos != len(data):
+            print(f"ERROR: Unexpected trailing bytes in {cp_path} (pos={pos}, len={len(data)})", file=sys.stderr)
+            sys.exit(1)
+        if pruned:
+            rebuilt = (
+                bytes([version, flag])
+                + struct.pack('>i', core_len)
+                + core_xml
+                + struct.pack('>H', len(kept))
+                + b''.join(kept)
+            )
+            tmp_path = cp_path + '.tmp'
+            with open(tmp_path, 'wb') as fh:
+                fh.write(rebuilt)
+            os.chmod(tmp_path, 0o644)
+            os.replace(tmp_path, cp_path)
+            changed = True
+            print(f"pruned {len(pruned)} entries from {cp_path}: {', '.join(sorted(pruned))}")
+    if changed:
+        print("PRUNED_CHANGED")
+    PYEOF
+  args:
+    executable: /bin/bash
+  become: yes
+  register: jetbrains_classpath_prune
+  changed_when: "'PRUNED_CHANGED' in (jetbrains_classpath_prune.stdout | default(''))"
+
 # ── Find installed directories ─────────────────────────────────────────────────
 # Initialize safe defaults first so skipped find tasks don't leave the registered
 # variables in an undefined/structurally-wrong state. Ansible finalizes task args
