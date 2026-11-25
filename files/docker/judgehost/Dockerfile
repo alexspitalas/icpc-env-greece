@@ -2,14 +2,12 @@ FROM domjudge/judgehost:9.0.0
 
 ARG KOTLIN_VERSION=2.2.20
 
-# Layer 1: Install unzip (outer container) and GCC 14 / G++ 14 inside /chroot/domjudge
-# so judgehost C/C++ compilers match the contestant image (GCC/G++ 14.2.0).
+# Layer 1: Install GCC 14 / G++ 14 and CPython 3 inside /chroot/domjudge
+# so judgehost compilers/interpreters match the contestant image
+# (GCC/G++ 14.2.0, OpenJDK 21, Python 3.12, PyPy 3).
+# Note: unzip is already pre-installed in domjudge/judgehost:9.0.0.
 RUN set -eux; \
     export DEBIAN_FRONTEND=noninteractive; \
-    apt-get update; \
-    apt-get install -y --no-install-recommends unzip; \
-    apt-get clean; \
-    rm -rf /var/lib/apt/lists/*; \
     RESOLV_HAD_ORIG=0; \
     if [ -e /chroot/domjudge/etc/resolv.conf ] || [ -L /chroot/domjudge/etc/resolv.conf ]; then \
         mv /chroot/domjudge/etc/resolv.conf /tmp/chroot-resolv.conf.orig; \
@@ -27,7 +25,8 @@ RUN set -eux; \
     chroot /chroot/domjudge env DEBIAN_FRONTEND=noninteractive apt-get update; \
     chroot /chroot/domjudge env DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
         gcc-14 \
-        g++-14; \
+        g++-14 \
+        python3; \
     if [ -x /chroot/domjudge/usr/bin/gcc-13 ]; then \
         chroot /chroot/domjudge update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-13 50; \
     fi; \
