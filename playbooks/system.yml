@@ -133,19 +133,25 @@
     path: /etc/modprobe.d/blacklist-uas.conf
     state: absent
 
-# On internal-SSD installs, block USB mass-storage drives (flash drives / external HDDs)
-# at the kernel module level so contestants cannot attach USB storage at all.
-# USB keyboards and mice use usbhid and remain unaffected. On USB-boot installs this
-# file is removed because the OS itself boots from usb-storage.
-- name: blacklist USB mass-storage kernel modules on ssd installs
-  when: sys_install_target == 'ssd'
+# Optional extra-strict kernel-level block of USB mass-storage drives (flash drives /
+# external HDDs). Contestants are already prevented from mounting USB drives via Polkit
+# (99-deny-polkit-mount.rules) and non-root permissions. Default is false for both usb
+# and ssd so ssd images can still be booted from a live USB stick for testing, and it is
+# automatically forced off whenever install_target == 'usb'. USB keyboards/mice (usbhid)
+# are never affected.
+- name: resolve effective kernel-level USB mass-storage blacklist setting
+  set_fact:
+    sys_block_usb_storage_kernel: "{{ (sys_install_target == 'ssd') and (block_usb_storage_kernel | default(false, true) | bool) }}"
+
+- name: blacklist USB mass-storage kernel modules (only when install_target=ssd and block_usb_storage_kernel=true)
+  when: sys_block_usb_storage_kernel | bool
   copy:
     dest: /etc/modprobe.d/blacklist-icpc-usb-storage.conf
     owner: root
     group: root
     mode: '0644'
     content: |
-      # Managed by Ansible (playbooks/system.yml, install_target: ssd)
+      # Managed by Ansible (playbooks/system.yml, install_target: ssd, block_usb_storage_kernel: true)
       # Disable external USB mass-storage devices on internal-SSD workstations
       blacklist usb-storage
       blacklist uas
@@ -153,8 +159,8 @@
       install uas /bin/true
   notify: update initramfs
 
-- name: ensure USB mass-storage is NOT blacklisted on usb-boot installs
-  when: sys_install_target == 'usb'
+- name: ensure USB mass-storage is NOT blacklisted at the kernel level (default / usb-boot)
+  when: not (sys_block_usb_storage_kernel | bool)
   file:
     path: /etc/modprobe.d/blacklist-icpc-usb-storage.conf
     state: absent

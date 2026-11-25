@@ -33,6 +33,17 @@ icpcadmin_ssh_keys: []
 #           do not need the 192MB FAT32 ICPC transfer partition.
 install_target: "usb"
 
+# Optional extra-strict kernel-level block of USB mass-storage modules (usb-storage / uas).
+# Note: Contestants are ALREADY blocked from mounting USB drives via Polkit and permissions
+# regardless of this setting, and USB keyboards/mice (usbhid) are never affected.
+#   false (default): Keeps usb-storage available so even an install_target: "ssd" image can be
+#                    booted from a live USB stick for testing (and icpcadmin can use USB drives).
+#   true           : Blacklists usb-storage & uas in modprobe/initramfs so USB storage drives
+#                    are not enumerated at all. Must be false for install_target: "usb" (and is
+#                    automatically forced off for "usb"); an image built with true CANNOT be
+#                    booted from a USB stick.
+block_usb_storage_kernel: false
+
 # ===== Wireless (Wi-Fi) Configuration =====
 # Set to true when installing on laptops or machines that require Wi-Fi connectivity.
 # When false (default), wireless packages (NetworkManager, nm-applet, wpasupplicant, iw)

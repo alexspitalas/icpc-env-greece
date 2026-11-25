@@ -131,7 +131,7 @@ Set `install_target` to `"ssd"` in `group_vars/all` before running `./build-fina
 install_target: "ssd"
 ```
 * `"usb"` *(default)* keeps USB flash drive stability workarounds enabled (`blacklist uas`, `usbcore.autosuspend=-1`, `usbcore.lpm_disable=1`, `99-usb-flush.conf` dirty-page caps, `warm-fs-cache.service` boot preloading via `vmtouch`, `fstrim.timer` disabled, and volatile `journald` logs).
-* `"ssd"` removes the USB throttling/workarounds and `warm-fs-cache.service`, enables weekly `fstrim.timer`, and persists `journald` logs (capped at 100M).
+* `"ssd"` removes the USB throttling/workarounds and `warm-fs-cache.service`, enables weekly `fstrim.timer`, and persists `journald` logs (capped at 100M). By default (`block_usb_storage_kernel: false`), an `"ssd"` image can still be booted as a live USB for testing while contestants remain blocked from mounting USB drives via Polkit; set `block_usb_storage_kernel: true` only for final internal-SSD-only images where USB storage should also be blacklisted at the kernel/initramfs level (automatically ignored when `install_target: "usb"`).
 * *(Optional)* When building a base image exclusively for internal SSDs, pass `--no-usb` to `./create_baseimg.sh` to omit the 192MB FAT32 `ICPC` partition.
 
 ### 2. Deploy via USB + Clonezilla
