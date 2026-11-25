@@ -76,9 +76,9 @@ cd icpc-env-greece
     curl -O https://download.sublimetext.com/sublime-text_build-4200_amd64.deb
     ```
 
-  * Download Kotlin zip into the `files/` directory
+  * *(Optional — auto-downloaded during build if missing)* Download Kotlin 2.2.20 zip into the `files/` directory:
     ```bash
-    curl -L -O https://github.com/JetBrains/kotlin/releases/download/v2.2.0/kotlin-compiler-2.2.0.zip
+    curl -L -O https://github.com/JetBrains/kotlin/releases/download/v2.2.20/kotlin-compiler-2.2.20.zip
     ```
   * *(Optional, required if `node_exporter_enabled: true`)* Download Prometheus `node_exporter` into the `files/` directory:
     ```bash

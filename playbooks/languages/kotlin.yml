@@ -1,14 +1,57 @@
 ---
+# ── Single unified Kotlin version across CLI, IntelliJ JPS, IntelliJ stdlib, and Gradle ──
+- name: Set unified Kotlin version (matches IDEA 2025.2.4 New Project wizard default)
+  set_fact:
+    kotlin_version: "2.2.20"
+
 # ── Kotlin standalone compiler ────────────────────────────────────────────────
 - name: install unzip (needed to extract kotlin)
   apt:
     pkg: unzip
     state: present
 
-- name: Install Kotlin
+- name: Check if local Kotlin compiler zip exists in files/
+  stat:
+    path: "files/kotlin-compiler-{{ kotlin_version }}.zip"
+  delegate_to: 127.0.0.1
+  become: false
+  register: local_kotlin_zip
+
+- name: Remove any previous /opt/kotlinc before installing Kotlin {{ kotlin_version }}
+  file:
+    path: /opt/kotlinc
+    state: absent
+
+- name: Install Kotlin {{ kotlin_version }} from local files/ archive
+  when: local_kotlin_zip.stat.exists
   unarchive:
-    src: files/kotlin-compiler-2.2.0.zip
+    src: "files/kotlin-compiler-{{ kotlin_version }}.zip"
     dest: /opt
+
+- name: Download and install Kotlin {{ kotlin_version }} from GitHub Releases (when not in files/)
+  when: not local_kotlin_zip.stat.exists
+  block:
+    - name: Download Kotlin compiler {{ kotlin_version }}
+      get_url:
+        url: "https://github.com/JetBrains/kotlin/releases/download/v{{ kotlin_version }}/kotlin-compiler-{{ kotlin_version }}.zip"
+        dest: "/tmp/kotlin-compiler-{{ kotlin_version }}.zip"
+        mode: '0644'
+      environment:
+        http_proxy: ""
+        https_proxy: ""
+        HTTP_PROXY: ""
+        HTTPS_PROXY: ""
+
+    - name: Extract downloaded Kotlin compiler {{ kotlin_version }}
+      unarchive:
+        src: "/tmp/kotlin-compiler-{{ kotlin_version }}.zip"
+        dest: /opt
+        remote_src: yes
+
+    - name: Remove temporary Kotlin compiler archive
+      file:
+        path: "/tmp/kotlin-compiler-{{ kotlin_version }}.zip"
+        state: absent
 
 - name: create symlinks for kotlin binaries
   file:
@@ -129,13 +172,12 @@
     content: |
       fun main() = println("hello")
 
-# Seed Gradle cache for BOTH 2.2.20 (IntelliJ IDEA 2025.2.4 wizard default from
-# compatibility/wizard_versions.json) and 2.2.0 (matching standalone /opt/kotlinc).
-- name: Resolve and cache Kotlin + Gradle dependencies for 2.2.20 and 2.2.0 (no compiler daemon spawned)
+# Seed Gradle cache for the single unified Kotlin version ({{ kotlin_version }}).
+- name: Resolve and cache Kotlin {{ kotlin_version }} + Gradle dependencies (no compiler daemon spawned)
   shell: |
     set -euo pipefail
-    for KVER in 2.2.20 2.2.0; do
-      cat > /tmp/gradle-seed-project/build.gradle.kts <<EOF
+    KVER="{{ kotlin_version }}"
+    cat > /tmp/gradle-seed-project/build.gradle.kts <<EOF
     plugins {
         kotlin("jvm") version "$KVER"
     }
@@ -160,12 +202,11 @@
         }
     }
     EOF
-      /opt/gradle/gradle-8.14.3/bin/gradle \
-        --project-dir /tmp/gradle-seed-project \
-        --gradle-user-home /opt/gradle-home \
-        --no-daemon \
-        resolveDeps
-    done
+    /opt/gradle/gradle-8.14.3/bin/gradle \
+      --project-dir /tmp/gradle-seed-project \
+      --gradle-user-home /opt/gradle-home \
+      --no-daemon \
+      resolveDeps
   args:
     executable: /bin/bash
   environment:
@@ -209,84 +250,39 @@
     mode: '0755'
   become: yes
 
-- name: Pre-download Kotlin standard library for Maven Local (IntelliJ build system)
+- name: Remove older Kotlin versions from /opt/m2/repository so only Kotlin {{ kotlin_version }} is cached
+  file:
+    path: /opt/m2/repository/org/jetbrains/kotlin
+    state: absent
+  become: yes
+
+- name: Pre-download Kotlin {{ kotlin_version }} runtime and JPS compiler artifacts for Maven Local
   command: >
     mvn dependency:get
-    -Dartifact="org.jetbrains.kotlin:kotlin-stdlib:{{ item }}"
+    -Dartifact="{{ item }}"
     -Dmaven.repo.local="/opt/m2/repository"
   loop:
-    - "2.2.21"
-    - "2.2.20"
-    - "2.2.10"
-    - "2.2.0"
-    - "2.1.21"
-    - "2.1.10"
-    - "2.1.0"
-    - "2.0.21"
-    - "2.0.0"
-    - "1.9.24"
+    - "org.jetbrains.kotlin:kotlin-stdlib:{{ kotlin_version }}"
+    - "org.jetbrains.kotlin:kotlin-stdlib-jdk8:{{ kotlin_version }}"
+    - "org.jetbrains.kotlin:kotlin-reflect:{{ kotlin_version }}"
+    - "org.jetbrains.kotlin:kotlin-jps-plugin:{{ kotlin_version }}"
+    - "org.jetbrains.kotlin:kotlin-dist-for-jps-meta:{{ kotlin_version }}:pom"
   environment:
     http_proxy: ""
     https_proxy: ""
     HTTP_PROXY: ""
     HTTPS_PROXY: ""
   become: yes
-  ignore_errors: true
 
-- name: Pre-download Kotlin stdlib jdk8 for Maven Local (IntelliJ build system)
-  command: >
-    mvn dependency:get
-    -Dartifact="org.jetbrains.kotlin:kotlin-stdlib-jdk8:{{ item }}"
-    -Dmaven.repo.local="/opt/m2/repository"
-  loop:
-    - "2.2.21"
-    - "2.2.20"
-    - "2.2.10"
-    - "2.2.0"
-    - "2.1.21"
-    - "2.1.10"
-    - "2.1.0"
-    - "2.0.21"
-    - "2.0.0"
-    - "1.9.24"
-  environment:
-    http_proxy: ""
-    https_proxy: ""
-    HTTP_PROXY: ""
-    HTTPS_PROXY: ""
-  become: yes
-  ignore_errors: true
-
-- name: Pre-download Kotlin reflect for Maven Local (IntelliJ build system)
-  command: >
-    mvn dependency:get
-    -Dartifact="org.jetbrains.kotlin:kotlin-reflect:{{ item }}"
-    -Dmaven.repo.local="/opt/m2/repository"
-  loop:
-    - "2.2.21"
-    - "2.2.20"
-    - "2.2.10"
-    - "2.2.0"
-    - "2.1.21"
-    - "2.1.10"
-    - "2.1.0"
-    - "2.0.21"
-    - "2.0.0"
-    - "1.9.24"
-  environment:
-    http_proxy: ""
-    https_proxy: ""
-    HTTP_PROXY: ""
-    HTTPS_PROXY: ""
-  become: yes
-  ignore_errors: true
-
-- name: Verify IDEA 2025.2.4 wizard Kotlin stdlib (2.2.20 and 2.1.21) exist in /opt/m2/repository
+- name: Verify Kotlin {{ kotlin_version }} stdlib and JPS compiler artifacts exist in /opt/m2/repository
   stat:
     path: "{{ item }}"
   loop:
-    - /opt/m2/repository/org/jetbrains/kotlin/kotlin-stdlib/2.2.20/kotlin-stdlib-2.2.20.jar
-    - /opt/m2/repository/org/jetbrains/kotlin/kotlin-stdlib-jdk8/2.1.21/kotlin-stdlib-jdk8-2.1.21.jar
+    - "/opt/m2/repository/org/jetbrains/kotlin/kotlin-stdlib/{{ kotlin_version }}/kotlin-stdlib-{{ kotlin_version }}.jar"
+    - "/opt/m2/repository/org/jetbrains/kotlin/kotlin-stdlib-jdk8/{{ kotlin_version }}/kotlin-stdlib-jdk8-{{ kotlin_version }}.jar"
+    - "/opt/m2/repository/org/jetbrains/kotlin/kotlin-jps-plugin/{{ kotlin_version }}/kotlin-jps-plugin-{{ kotlin_version }}.jar"
+    - "/opt/m2/repository/org/jetbrains/kotlin/kotlin-dist-for-jps-meta/{{ kotlin_version }}/kotlin-dist-for-jps-meta-{{ kotlin_version }}.pom"
+    - "/opt/m2/repository/org/jetbrains/kotlin/kotlin-compiler/{{ kotlin_version }}/kotlin-compiler-{{ kotlin_version }}.jar"
   register: m2_kotlin_verify
   failed_when: not m2_kotlin_verify.stat.exists
   become: yes
@@ -300,7 +296,7 @@
   changed_when: false
   become: yes
 
-- name: Configure Maven offline settings in /opt/m2/settings.xml
+- name: Configure Maven offline and local proxy settings in /opt/m2/settings.xml
   copy:
     dest: /opt/m2/settings.xml
     mode: '0644'
@@ -309,6 +305,24 @@
                 xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
                 xsi:schemaLocation="http://maven.apache.org/SETTINGS/1.0.0 https://maven.apache.org/xsd/settings-1.0.0.xsd">
         <offline>true</offline>
+        <proxies>
+          <proxy>
+            <id>icpc-local-http</id>
+            <active>true</active>
+            <protocol>http</protocol>
+            <host>localhost</host>
+            <port>3128</port>
+            <nonProxyHosts>localhost|127.0.0.1</nonProxyHosts>
+          </proxy>
+          <proxy>
+            <id>icpc-local-https</id>
+            <active>true</active>
+            <protocol>https</protocol>
+            <host>localhost</host>
+            <port>3128</port>
+            <nonProxyHosts>localhost|127.0.0.1</nonProxyHosts>
+          </proxy>
+        </proxies>
       </settings>
   become: yes
 

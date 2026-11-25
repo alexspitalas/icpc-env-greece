@@ -12,3 +12,90 @@
   file:
     path: /tmp/apache-netbeans_18-1_all.deb
     state: absent
+
+# Suppress NetBeans 18's "Maven is not configured to use a network proxy (localhost:3128)"
+# modal prompt and default NetBeans' Maven integration to offline mode.
+- name: Ensure NetBeans 18 Maven preferences directory exists in /etc/skel
+  file:
+    path: /etc/skel/.netbeans/18/config/Preferences/org/netbeans/modules
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+
+- name: Configure NetBeans 18 Maven preferences (ignore proxy mismatch prompt, offline mode)
+  copy:
+    dest: /etc/skel/.netbeans/18/config/Preferences/org/netbeans/modules/maven.properties
+    owner: root
+    group: root
+    mode: '0644'
+    content: |
+      networkProxy=IGNORE
+      defaultOptions=--no-transfer-progress --offline
+
+# Also ensure ~/.m2/settings.xml exists with offline + localhost:3128 proxy config
+# even on images built without the Kotlin playbook.
+- name: Ensure /etc/skel/.m2 directory exists for NetBeans Maven settings
+  file:
+    path: /etc/skel/.m2
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+
+- name: Ensure /etc/skel/.m2/settings.xml exists with offline + localhost:3128 proxy config
+  copy:
+    dest: /etc/skel/.m2/settings.xml
+    owner: root
+    group: root
+    mode: '0644'
+    force: no
+    content: |
+      <settings xmlns="http://maven.apache.org/SETTINGS/1.0.0"
+                xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                xsi:schemaLocation="http://maven.apache.org/SETTINGS/1.0.0 https://maven.apache.org/xsd/settings-1.0.0.xsd">
+        <offline>true</offline>
+        <proxies>
+          <proxy>
+            <id>icpc-local-http</id>
+            <active>true</active>
+            <protocol>http</protocol>
+            <host>localhost</host>
+            <port>3128</port>
+            <nonProxyHosts>localhost|127.0.0.1</nonProxyHosts>
+          </proxy>
+          <proxy>
+            <id>icpc-local-https</id>
+            <active>true</active>
+            <protocol>https</protocol>
+            <host>localhost</host>
+            <port>3128</port>
+            <nonProxyHosts>localhost|127.0.0.1</nonProxyHosts>
+          </proxy>
+        </proxies>
+      </settings>
+
+- name: Check if contestant home exists for NetBeans config sync
+  stat:
+    path: /home/contestant
+  register: netbeans_contestant_home
+
+- name: Sync NetBeans Maven preferences into existing contestant home
+  when: netbeans_contestant_home.stat.exists and netbeans_contestant_home.stat.isdir
+  block:
+    - name: Ensure contestant NetBeans 18 Maven preferences directory exists
+      file:
+        path: /home/contestant/.netbeans/18/config/Preferences/org/netbeans/modules
+        state: directory
+        owner: contestant
+        group: contestant
+        mode: '0755'
+
+    - name: Copy NetBeans 18 maven.properties into contestant home
+      copy:
+        src: /etc/skel/.netbeans/18/config/Preferences/org/netbeans/modules/maven.properties
+        dest: /home/contestant/.netbeans/18/config/Preferences/org/netbeans/modules/maven.properties
+        remote_src: yes
+        owner: contestant
+        group: contestant
+        mode: '0644'
