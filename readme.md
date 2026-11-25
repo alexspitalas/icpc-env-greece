@@ -1,124 +1,101 @@
-# ICPC Contest Image Tools
-This repository is a fork of the necessary tools to build the contestant image by the [ICPC Southeast Regional](https://github.com/icpc-environment/icpc-env).
-The image is a linux installation optimized for booting off a flash drive that is used by all the teams in our region.
-This is a trial test of the tools for the [ICPC Greece Regional](https://algoforum.upatras.gr/).
+# ICPC Judgehost Image Tools (`judgesImage`)
+This branch builds the dedicated **DOMjudge 9.0.0 judgehost** Linux image for the [ICPC Greece / SEERC Regional](https://algoforum.upatras.gr/), based on the [ICPC Southeast Regional](https://github.com/icpc-environment/icpc-env) image tools.
 
 ## Key Features
-We will reduce the features of the original image to supports the following:
-
-* Programming languages: c, c++, java, python3
-* IDEs and developer tools: Eclipse, Code::Blocks, gvim, emacs, Visual Studio Code, IntelliJ
-* Local web server with copies of language documentation for: STL *(CPP)*, Java, Python3
-* Automatically populate the linux disk cache on boot to speed up response time for certain programs
-* Advanced firewall to restrict team access to the network
-* Fat32 partition for teams to store files that allows for easy access after the contest
-* Simple management/set up for admins
-* Custom home directory content(for configuring firefox, desktop shortcuts, etc)
-* Fully customizable, automated process for building consistent images
-* Lightweight XFCE desktop environment
+* **Custom DOMjudge 9.0.0 judgehost Docker image (`icpc/judgehost:9.0.0`)** built on top of `domjudge/judgehost:9.0.0` with toolchains matching the contestant image inside `/chroot/domjudge`:
+  * **C / C++:** GCC 14 / G++ 14 (default via `update-alternatives`)
+  * **Java:** OpenJDK 21
+  * **Python:** Python 3.12 & PyPy 3
+  * **Kotlin:** Kotlin `2.2.20` (`/opt/kotlinc` + `/usr/local/bin/{kotlinc,kotlin,kotlinc-jvm,kapt}`)
+  * Verified during image build with an end-to-end unprivileged (`nobody`) compile & run smoke test across all 5 languages
+* **Host compilers & tooling:** GCC/G++ 14, OpenJDK 21, Python 3 / PyPy 3, Kotlin `2.2.20`, VS Code, `vim`, `gedit`, Docker CE (with 50 MB × 3 json-file log rotation)
+* **Deterministic judging & stability tuning:**
+  * cgroup v2 enabled (required by DOMjudge 9.0+)
+  * SMT disabled (`nosmt`), deep C-states capped (`max_cstate=1`), ASLR disabled (`kernel.randomize_va_space=0`), `vm.swappiness=0`
+  * Boot-time CPU stabilization service (`judgehost-tuning.service`: `performance` governor/EPP, Turbo/Boost disabled, THP defrag off)
+  * `runJudgehosts.sh` automatically pins one judgehost container per physical P-core (reserving CPU 0 for the OS/IRQs/Docker/SSH)
+* **Unattended boot & hardened SSH:**
+  * `firstboot.service` (`icpc_setup`) disabled so judgehosts boot unattended
+  * Key-only SSH authentication for `icpcadmin`/`root` (`PasswordAuthentication no`, `contestant` and `teamreset` denied)
+  * UFW configured with `OpenSSH` allowed and kept disabled on judgehosts so Docker/DOMserver traffic is unobstructed
+* **Lightweight XFCE desktop** with helper scripts in `/opt/scripts/` (`runJudgehosts.sh`, `startAllContainers.sh`, `stopAllContainers.sh`, `removeAllContainers.sh`)
 
 ## Usage Requirements
-* 64bit hardware
-* USB boot capable(BIOS + UEFI supported)
-* 1gb of ram(2+ recommended)
-* 32gb flash drive(USB3.2 strongly recommended)
+* 64-bit x86_64 hardware (multi-core CPU; physical SSD recommended)
+* BIOS or UEFI boot capable
+* 4+ GB RAM recommended (depending on core count & judgehost containers)
 
 ## Build Requirements
-* Linux host system
-* qemu, uml-utlities
-* Approx 30GB disk space free
-* Ansible
-* Python3
+* Linux host system with KVM support
+* `qemu-system-x86`, `xorriso`, `bsdtar` (`libarchive-tools`), `ansible`, `python3`, `python3-passlib`
+* ~30 GB free disk space for the sparse build (default virtual disk size is `88500M` / ~88.5 GB; use `-s` if targeting a smaller physical drive); build VM uses 2 GB RAM / 2 vCPUs
 
 ## Building the Image
-Building the image is a very simple process, and takes between 10-30minutes
-depending on connection speed and various other factors.
 
-1. Clone this repository:
-```bash
-git clone https://github.com/alexspitalas/icpc-env-greece
-cd icpc-env-greece
-```
-1. Make sure dependencies are met
-  * Install required packages
-    ```bash
-    sudo apt-get install qemu-system-x86 genisoimage bsdtar ansible # Debian based Distros
-    sudo apt-get install qemu-system-x86 genisoimage ansible libarchive-tools xorriso python3-passlib # newer Debian based Distros without bsdtar
-    sudo pacman -S qemu-system-x86 cdrtools libarchive ansible # Arch Based Distros
-    ```
-  * Download the 64 bit version of Ubuntu 24.04 Server inside the cloned directory:
-    ```bash
-    curl -O https://releases.ubuntu.com/releases/24.04.4/ubuntu-24.04.4-live-server-amd64.iso
-    ```
-  * Download the 64 bit version of eclipse into the `files/` directory:
-    ```bash
-    cd files && curl -O  https://ftp2.osuosl.org/pub/eclipse/technology/epp/downloads/release/2025-09/R/eclipse-java-2025-09-R-linux-gtk-x86_64.tar.gz
+1. Clone this repository and switch to `judgesImage`:
+   ```bash
+   git clone https://github.com/alexspitalas/icpc-env-greece
+   cd icpc-env-greece
+   git checkout judgesImage
+   ```
 
-1. Run secrets/gen-secrets.sh to create some ssh keys/other secret data. Follow this with ./fetch-secrets.sh to put them in the right place for ansible. Pass the ID of the contest as an argument on both scripts.
-```bash
-cd ../secrets
-chmod u+x gen-secrets.sh
-./gen-secrets.sh 'contestID'
-```
-```bash
-cd ..
-chmod u+x fetch-secrets.sh
-./fetch-secrets.sh 'contestID'
-```
-2. Copy `group_vars/all.dist` to `group_vars/all` and edit it to your liking. Specifically
-set the icpcadmin password, and firewall expiration properly.
-```bash
-cp group_vars/all.dist group_vars/all # You can append this with .yml .yaml
-# If you want to edit password and firewall expiration
-code group_vars/all #opens editor
-```
+2. Install host build dependencies:
+   ```bash
+   # Ubuntu / Debian
+   sudo apt-get install qemu-system-x86 xorriso ansible libarchive-tools python3-passlib
+   # Arch Linux
+   sudo pacman -S qemu-system-x86 cdrtools libarchive ansible
+   ```
 
-3. Run the `create_baseimg.sh` script to create an unattended installation disk for ubuntu, perform the installation,
-and leave the base image ready for processing. During this step you can specify how large you want the image to be(Default 28500M to fit on most
-32G flash drives).
-```bash
-# This step takes around 3-5minutes depending on system/internet speed.
-./create_baseimg.sh # optionally add '-s 28500M' for 32GB images, or --no-usb remove the extra fat32 partition
-```
-4. Build the actual contestant image. This step takes the base image, boots it up,
-runs ansible to configure everything, performs a few final cleanup steps, and finally
-powers it off. Take a walk, this step takes some time(10-30minutes).
-```bash
-./build-final.sh
-```
-5. Take the newly minted image and copy it to a usb drive (or hard drive) (as root). You can see all devices by running 'lsblk'.
-```
-# WARNING: Make sure to replace /dev/sdx with your actual device
-sudo dd if=output/all-2025-09-01_image-amd64.img of=/dev/sdx bs=1M status=progress oflag=direct conv=sparse
-```
-## Customization of the Image
-One of our goals with this image is for it to be easily customized. To achieve this
-the image is configured using Ansible. Ansible is kicked off with the `main.yml`
-file, which mostly just includes things in the `playbooks/` subdirectory. For more
-details please refer to `playbooks/readme.yml`**[Does not exist]**. Support files for ansible are
-found in the `files/` subdirectory.
+3. Download the Ubuntu 24.04.4 Server ISO into the repository root:
+   ```bash
+   curl -LO https://releases.ubuntu.com/24.04/ubuntu-24.04.4-live-server-amd64.iso
+   ```
+   *(No manual IDE or Kotlin archives are required — Kotlin `2.2.20` is downloaded automatically during `build-final.sh`, or reused if `files/kotlin-compiler-2.2.20.zip` is placed locally.)*
 
-Some of the ansible plays depend on variables that you can set in the file
-`group_vars/all`. Please refer to `group_vars/all.dist` for an example of what
-this file should contain. That's where you'll want to go to edit the contest
-admin password and configure what urls contestants are allowed to access.
+4. Generate SSH keys/secrets and copy them into `files/secrets/`:
+   ```bash
+   cd secrets
+   chmod u+x gen-secrets.sh
+   ./gen-secrets.sh 'contestID'
+   cd ..
+   chmod u+x fetch-secrets.sh
+   ./fetch-secrets.sh 'contestID'
+   ```
 
-If you want to customize the partition layout, you'll need to edit the
-`configs/2004_autoinnstall.yaml` file. By default you'll get a 192MB Fat32 partition
-and the rest of the space will be dedicated to the image itself. 14700M works well
-as a default size and fits easily on most 16G flash drives you'll encounter. You can
-also run `create_baseimage.sh` with `--no-usb` to skip getting the 192MB Fat32 partition
-if you don't intend to use these on usb drives the contestants get to keep.
+5. Copy `group_vars/all.dist` to `group_vars/all` and customize `icpc_timezone`, `icpcadmin_pass`, and any extra `icpcadmin_ssh_keys`:
+   ```bash
+   cp group_vars/all.dist group_vars/all
+   ```
 
-### Testing customizations
-There is a script available to help with development so you don't have to build
-the full image, wait for it to copy to a usb drive, and then boot.
+6. Create the base Ubuntu 24.04.4 disk image (default size is `88500M` / ~88.5 GB; pass `-s <size>` if your target drive is smaller, and `--no-usb` if installing on internal SSDs without the 192 MB FAT32 `ICPC` partition):
+   ```bash
+   ./create_baseimg.sh --no-usb
+   # Example for a 32 GB target drive:
+   # ./create_baseimg.sh --no-usb -s 28500M
+   ```
 
-Follow steps the above until you get to running the `build-final.sh` script;
-instead run `./runvm.sh` instead. This will start a VM off the base image, then
-give you a menu allowing you to run ansible, ssh in, and a few other utility
-functions.
+7. Provision the judgehost image with Ansible (builds `icpc/judgehost:9.0.0` and runs the chroot smoke tests):
+   ```bash
+   ./build-final.sh
+   ```
 
-Once you have ansible performing all the tasks you need, halt the vm, then
-continue with the `build-final.sh` script. You should never use an image created
-by the `runvm.sh` script, always build images using `build-final.sh`
+8. Flash the generated image to the target disk (replace `/dev/sdx` carefully — check with `lsblk`):
+   ```bash
+   sudo dd if=output/all-YYYY-MM-DD_image-amd64.img of=/dev/sdx bs=1M status=progress oflag=direct conv=sparse
+   ```
+
+## Post-Install Judgehost Setup
+1. On the DOMserver Web UI, enable Kotlin under **Admin → Languages → `kt` → Allow submit: Yes**.
+2. On each judgehost PC, edit `/opt/scripts/runJudgehosts.sh` to set:
+   * `DOMSERVER_IP` / `DOMSERVER_PORT`
+   * `JUDGEDAEMON_PASSWORD`
+   * `HOSTNAME` (**must be unique** for each physical judgehost PC)
+3. Create and start the judgehost containers:
+   ```bash
+   sudo /opt/scripts/runJudgehosts.sh
+   sudo /opt/scripts/startAllContainers.sh
+   ```
+
+## Testing Customizations
+To iterate on Ansible changes without running a full `build-final.sh`, use `./runvm.sh` against the base image. Always build production images with `./build-final.sh`.

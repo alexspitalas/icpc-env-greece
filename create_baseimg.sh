@@ -3,7 +3,7 @@
 # Creates the image -- Only uses USERDATA and METADATA
 
 # Settings
-ISO64="ubuntu-24.04-live-server-amd64.iso"
+ISO64="ubuntu-24.04.4-live-server-amd64.iso"
 OUT64="unattended-${ISO64}"
 IMG64="base-amd64.img"
 
@@ -12,9 +12,9 @@ USERDATA="configs/2204_autoinstall.yaml" # Correct since we are using 2204 Image
 METADATA="configs/2204_metadata"
 
 function usage() {
-  echo "Usage: create_baseimage.sh [-s size]"
+  echo "Usage: create_baseimg.sh [-s size] [--no-usb]"
   echo ""
-  echo "-s|--size n   Size of the resulting image(default 14700M)"
+  echo "-s|--size n   Size of the resulting image (default 88500M)"
   echo "--no-usb      Don't create a fat32 partition for easy usb mounting"
   exit 1
 }
@@ -41,15 +41,17 @@ while [[ $# -ge 1 ]]; do
     shift
 done
 
-# Default image size 14700M(fits on an 16G flash drive)
-# IMGSIZE=${IMGSIZE:-14700M}
-# Default image size 28500M(fits on an 32G flash drive)
-IMGSIZE=${IMGSIZE:-88500M} # 32G B file by default -- If you want to buy 64G flash drives this must change.
+# Default image size 88500M (~88.5 GB for judgehost SSDs / Docker images; override with -s, e.g. -s 28500M for 32 GB drives)
+IMGSIZE=${IMGSIZE:-88500M}
 
 # Leave this as it is probably
 function create_unattended_iso(){
+  if [ ! -f "$ISO" ]; then
+    echo "ERROR: Ubuntu ISO '$ISO' not found in $(pwd)." >&2
+    exit 1
+  fi
   CONTENTSDIR="$TMPDIR/contents"
-  rm -rf "$CONTENTSDIR"
+  rm -rf "$CONTENTSDIR" "$TMPDIR/efi.img" "$TMPDIR/mbr.img"
   mkdir -p "$CONTENTSDIR"
   echo "hello"
   # Extract the efi partition out of the iso
