@@ -7,7 +7,6 @@
       - dstat
       - iotop
       - sysstat
-      - dstat
       # misc admin tools
       - net-tools   # for ifconfig/old tools
       - curl        # debugging connection things

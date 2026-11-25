@@ -11,9 +11,19 @@ JUDGEDAEMON_PASSWORD="your-secure-password"
 # Set the hostname of the judgehost (MUST be unique for each physical PC!)
 HOSTNAME="judgedaemon-0"
 
+# Custom judgehost image built by playbooks/domserver.yml (GCC/G++ 14 + Kotlin 2.2.20 on DOMjudge 9.0.0)
+JUDGEHOST_IMAGE="icpc/judgehost:9.0.0"
+
 # Optional cap on number of judgehost containers on this PC (0 = all available physical P-cores except CPU 0).
 # For strict timing on memory-bound problems, capping below total physical cores reduces L3/DRAM contention.
 MAX_CONTAINERS=0
+
+# Ensure the pre-built custom judgehost image exists locally (avoid offline pull attempts)
+if ! docker image inspect "$JUDGEHOST_IMAGE" >/dev/null 2>&1; then
+    echo "ERROR: Docker image '$JUDGEHOST_IMAGE' was not found locally." >&2
+    echo "       Rebuild the judgehost image or check 'docker images'." >&2
+    exit 1
+fi
 
 # Verify cgroup v2 is active (required by DOMjudge 9.0+)
 CGROUP_FS=$(stat -fc %T /sys/fs/cgroup 2>/dev/null || echo "unknown")
@@ -45,7 +55,9 @@ declare -A PCORE_SET=()
 HAS_HYBRID_PCORES=0
 if [ -r /sys/devices/cpu_core/cpus ]; then
     while read -r cid; do
-        [ -n "$cid" ] && PCORE_SET["$cid"]=1
+        if [ -n "$cid" ]; then
+            PCORE_SET["$cid"]=1
+        fi
     done < <(expand_cpulist "$(cat /sys/devices/cpu_core/cpus)")
     if [ "${#PCORE_SET[@]}" -gt 0 ]; then
         HAS_HYBRID_PCORES=1
@@ -128,5 +140,5 @@ for core in "${TARGET_CPUS[@]}"; do
         -e CONTAINER_TIMEZONE=Europe/Athens \
         -e "DOMSERVER_BASEURL=http://$DOMSERVER_IP:$DOMSERVER_PORT/" \
         -e "JUDGEDAEMON_PASSWORD=$JUDGEDAEMON_PASSWORD" \
-        domjudge/judgehost:9.0.0
+        "$JUDGEHOST_IMAGE"
 done

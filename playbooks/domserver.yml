@@ -74,10 +74,145 @@
 - name: Flush handlers so Docker restarts with daemon.json before pulling/running
   meta: flush_handlers
 
-- name: Pull domjudge image
-  docker_image:
-    name: domjudge/judgehost:9.0.0
-    source: pull
+- name: Set custom judgehost Docker image parameters
+  set_fact:
+    judgehost_base_image: "domjudge/judgehost:9.0.0"
+    judgehost_custom_image: "icpc/judgehost:9.0.0"
+    judgehost_kotlin_version: "2.2.20"
+
+- name: Pull upstream DOMjudge judgehost base image
+  command: docker pull {{ judgehost_base_image }}
+  register: docker_pull_result
+  changed_when: "'Downloaded newer image' in docker_pull_result.stdout or 'Pull complete' in docker_pull_result.stdout"
+
+- name: Prepare build context for custom ICPC judgehost image
+  file:
+    path: /tmp/icpc-judgehost-build
+    state: directory
+    mode: '0755'
+
+- name: Copy custom judgehost Dockerfile into build context
+  copy:
+    src: files/docker/judgehost/Dockerfile
+    dest: /tmp/icpc-judgehost-build/Dockerfile
+    mode: '0644'
+
+- name: Check if local Kotlin {{ judgehost_kotlin_version }} archive exists in files/
+  stat:
+    path: "files/kotlin-compiler-{{ judgehost_kotlin_version }}.zip"
+  delegate_to: 127.0.0.1
+  become: false
+  register: local_judgehost_kotlin_zip
+
+- name: Copy local Kotlin {{ judgehost_kotlin_version }} archive to VM cache
+  when: local_judgehost_kotlin_zip.stat.exists
+  copy:
+    src: "files/kotlin-compiler-{{ judgehost_kotlin_version }}.zip"
+    dest: "/tmp/kotlin-compiler-{{ judgehost_kotlin_version }}.zip"
+    mode: '0644'
+
+- name: Download Kotlin {{ judgehost_kotlin_version }} archive from GitHub Releases (when not in files/)
+  when: not local_judgehost_kotlin_zip.stat.exists
+  get_url:
+    url: "https://github.com/JetBrains/kotlin/releases/download/v{{ judgehost_kotlin_version }}/kotlin-compiler-{{ judgehost_kotlin_version }}.zip"
+    dest: "/tmp/kotlin-compiler-{{ judgehost_kotlin_version }}.zip"
+    mode: '0644'
+  environment:
+    http_proxy: ""
+    https_proxy: ""
+    HTTP_PROXY: ""
+    HTTPS_PROXY: ""
+
+- name: Stage Kotlin {{ judgehost_kotlin_version }} archive in Docker build context
+  copy:
+    src: "/tmp/kotlin-compiler-{{ judgehost_kotlin_version }}.zip"
+    dest: "/tmp/icpc-judgehost-build/kotlin-compiler-{{ judgehost_kotlin_version }}.zip"
+    remote_src: yes
+    mode: '0644'
+
+- name: Build custom ICPC judgehost Docker image (GCC/G++ 14 + Kotlin {{ judgehost_kotlin_version }})
+  command: >
+    docker build
+    --build-arg KOTLIN_VERSION={{ judgehost_kotlin_version }}
+    -t {{ judgehost_custom_image }}
+    /tmp/icpc-judgehost-build
+
+- name: Clean up custom judgehost Docker build context
+  file:
+    path: /tmp/icpc-judgehost-build
+    state: absent
+
+- name: Prune dangling Docker image layers left from rebuilds
+  command: docker image prune -f
+  register: docker_prune_result
+  changed_when: "'deleted:' in docker_prune_result.stdout"
+
+- name: Smoke-test all compilers (C/C++ 14, Java 21, Python 3, PyPy 3, Kotlin {{ judgehost_kotlin_version }}) inside custom judgehost chroot
+  shell: |
+    docker run --rm -i --privileged \
+      -e KOTLIN_VERSION="{{ judgehost_kotlin_version }}" \
+      --entrypoint /bin/bash \
+      "{{ judgehost_custom_image }}" <<'SMOKE_EOF'
+    set -euo pipefail
+    trap 'umount /chroot/domjudge/proc 2>/dev/null || true; rm -rf /chroot/domjudge/tmp/smoke' EXIT
+    mount -t proc proc /chroot/domjudge/proc
+    mkdir -p /chroot/domjudge/tmp/smoke
+    chmod 1777 /chroot/domjudge/tmp /chroot/domjudge/tmp/smoke
+
+    GCC_VER="$(chroot /chroot/domjudge gcc --version | sed -n '1p')"
+    GPP_VER="$(chroot /chroot/domjudge g++ --version | sed -n '1p')"
+    JAVA_VER="$(chroot /chroot/domjudge java -version 2>&1)"
+    PY3_VER="$(chroot /chroot/domjudge python3 --version 2>&1)"
+    PYPY3_VER="$(chroot /chroot/domjudge pypy3 --version 2>&1)"
+    KOTLIN_VER="$(chroot /chroot/domjudge kotlinc -version 2>&1)"
+    echo "Judgehost chroot toolchains: $GCC_VER | $GPP_VER | $PY3_VER | $KOTLIN_VER"
+    [[ "$GCC_VER" == *"14."* ]]
+    [[ "$GPP_VER" == *"14."* ]]
+    [[ "$JAVA_VER" == *"21."* ]]
+    [[ -n "$PY3_VER" ]]
+    [[ -n "$PYPY3_VER" ]]
+    [[ "$KOTLIN_VER" == *"${KOTLIN_VERSION}"* ]]
+
+    cat <<'SRC_EOF' > /chroot/domjudge/tmp/smoke/test.c
+    #include <stdio.h>
+    int main(void) { puts("hello-c-14"); return 0; }
+    SRC_EOF
+    cat <<'SRC_EOF' > /chroot/domjudge/tmp/smoke/test.cpp
+    #include <iostream>
+    int main() { std::cout << "hello-cpp-14\n"; return 0; }
+    SRC_EOF
+    cat <<'SRC_EOF' > /chroot/domjudge/tmp/smoke/MainJava.java
+    public class MainJava { public static void main(String[] args) { System.out.println("hello-java-21"); } }
+    SRC_EOF
+    printf 'fun main() { println("hello-kotlin-%s") }\n' "${KOTLIN_VERSION}" > /chroot/domjudge/tmp/smoke/Main.kt
+    chmod 644 /chroot/domjudge/tmp/smoke/test.c /chroot/domjudge/tmp/smoke/test.cpp /chroot/domjudge/tmp/smoke/MainJava.java /chroot/domjudge/tmp/smoke/Main.kt
+
+    cat <<'RUN_EOF' > /chroot/domjudge/tmp/smoke/run_test.sh
+    #!/bin/bash
+    set -euo pipefail
+    cd /tmp/smoke
+    gcc -x c -Wall -O2 -static -pipe -o test_c test.c -lm
+    test "$(./test_c)" = "hello-c-14"
+    g++ -x c++ -Wall -O2 -static -pipe -o test_cpp test.cpp
+    test "$(./test_cpp)" = "hello-cpp-14"
+    javac -encoding UTF-8 MainJava.java
+    test "$(java -Dfile.encoding=UTF-8 -XX:+UseSerialGC -Xms64m -Xmx256m MainJava)" = "hello-java-21"
+    test "$(python3 -c 'print("hello-py3")')" = "hello-py3"
+    test "$(pypy3 -c 'print("hello-pypy3")')" = "hello-pypy3"
+    KOTLIN_DIR="$(dirname "$(realpath "$(command -v kotlinc)")")"
+    KOTLIN_STDLIB="$(dirname "$KOTLIN_DIR")/lib/kotlin-stdlib.jar"
+    test -r "$KOTLIN_STDLIB"
+    "${KOTLIN_DIR}/kotlinc" -d . -Djava.io.tmpdir=/ -J-Xmx384m Main.kt
+    OUT=$("${KOTLIN_DIR}/kotlin" -Dfile.encoding=UTF-8 -J-XX:+UseSerialGC -J-Xss65536k -J-Xms128m -J-Xmx384m MainKt)
+    test "$OUT" = "hello-kotlin-$1"
+    RUN_EOF
+    chmod 755 /chroot/domjudge/tmp/smoke/run_test.sh
+
+    chroot /chroot/domjudge su -s /bin/bash nobody -c "HOME=/nonexistent /tmp/smoke/run_test.sh '${KOTLIN_VERSION}'"
+    SMOKE_EOF
+  args:
+    executable: /bin/bash
+  changed_when: false
 
 # Make directory /opt/scripts
 - name: Create /opt/scripts directory
@@ -114,10 +249,10 @@
   copy:
     src: files/scripts/getPasswords.sh
     dest: /opt/scripts/getPasswords.sh
-    mode: '0777'
+    mode: '0755'
 
 - name: Copy copyFilesToDesktop shell script
   copy:
     src: files/scripts/copyFilesToDesktop.sh
     dest: /opt/copyFilesToDesktop.sh
-    mode: '0777'
+    mode: '0755'

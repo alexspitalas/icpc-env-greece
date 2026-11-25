@@ -29,7 +29,6 @@ vscode_extensions:
   # Python
   - ms-python.python
   - kevinrose.vsc-python-indent
-  - visualstudioexptteam.vscodeintellicode
   # Java
   - vscjava.vscode-java-pack
   # Misc

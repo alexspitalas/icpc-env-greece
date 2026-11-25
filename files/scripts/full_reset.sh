@@ -13,17 +13,20 @@ lpadmin -x ContestPrinter
 # clear the user
 /icpc/scripts/deleteUser.sh
 
-# make sure the firewall is on
-ufw --force enable
+# Ensure OpenSSH is allowed in UFW; keep firewall disabled on judgehosts (matches playbooks/firewall.yaml)
+ufw allow OpenSSH || true
+ufw --force disable || true
 
 rm -f /icpc/setup-complete
 rm -f /icpc/TEAM*
 rm -f /icpc/SITE
 
-# reset squid autologin
-echo "# Placeholder" > /etc/squid/autologin.conf
-chmod 640 /etc/squid/autologin.conf
-chown root:root /etc/squid/autologin.conf
+# reset squid autologin (if squid is installed)
+if [ -d /etc/squid ]; then
+    echo "# Placeholder" > /etc/squid/autologin.conf
+    chmod 640 /etc/squid/autologin.conf
+    chown root:root /etc/squid/autologin.conf
+fi
 
 # clear self test report
 rm -f /icpc/self_test_report

@@ -280,7 +280,8 @@
 - name: setup sudo for the admin
   copy:
     dest: /etc/sudoers.d/icpcadmins
-    mode: 0440
+    mode: '0440'
+    validate: 'visudo -cf %s'
     content: |
       # icpcadmin can run any command without a password
       icpcadmin ALL=NOPASSWD: ALL
@@ -289,7 +290,8 @@
 - name: setup sudo for the contestant
   copy:
     dest: /etc/sudoers.d/contestant
-    mode: 0440
+    mode: '0440'
+    validate: 'visudo -cf %s'
     content: |
       # icpcadmin can run any command without a password
       contestant ALL=NOPASSWD: ALL
@@ -297,8 +299,11 @@
 - name: set up firstboot configuration
   copy: src=files/firstboot.service dest=/etc/systemd/system/firstboot.service
 
-- name: enable firstboot service
-  service: name=firstboot enabled=yes
+- name: disable firstboot (icpc_setup) service on judgehosts so boot is unattended
+  systemd:
+    name: firstboot.service
+    enabled: no
+    daemon_reload: yes
 
 - name: check for ICPC partition
   shell: blkid -L "ICPC"
