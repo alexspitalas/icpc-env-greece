@@ -303,5 +303,6 @@ firefox_default_policies:
     MoreFromMozilla: false
     Locked: true
 
-clion_license_key: 
-  ""
+# Optional offline CLion license certificate key (CLion is still installed when left empty;
+# if set, the license key is automatically written into ~/.config/JetBrains/CLion2025.2/clion.key on login).
+clion_license_key: ""
