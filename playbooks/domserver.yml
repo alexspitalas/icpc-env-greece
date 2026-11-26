@@ -222,6 +222,7 @@
     [[ -n "$PY3_VER" ]]
     [[ -n "$PYPY3_VER" ]]
     [[ "$KOTLINC_VER" == *"${KOTLIN_VERSION}"* ]]
+    [[ "$KOTLINC_VER" != *"jansi"* ]]
     [[ "$KOTLIN_VER" == *"${KOTLIN_VERSION}"* ]]
 
     cat <<'SRC_EOF' > "$WORKDIR/compile/test.c"

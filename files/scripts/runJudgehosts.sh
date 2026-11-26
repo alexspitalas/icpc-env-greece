@@ -129,6 +129,10 @@ fi
 echo "Creating ${#TARGET_CPUS[@]} judgehost container(s) on physical P-core(s): ${TARGET_CPUS[*]} (reserving CPU ${ELIGIBLE_CPUS[0]} for OS)"
 
 for core in "${TARGET_CPUS[@]}"; do
+    # Assign a unique host UID/GID per container (default 62860 is shared across all
+    # containers, causing Linux RLIMIT_NPROC / DOMjudge process_limit to sum threads
+    # across parallel containers and break JVM languages like Kotlin/Java with EAGAIN).
+    run_uid=$((62860 + core))
     docker create \
         --privileged \
         --cgroupns=host \
@@ -137,6 +141,7 @@ for core in "${TARGET_CPUS[@]}"; do
         --name "judgehost-$core" \
         --hostname "$HOSTNAME" \
         -e "DAEMON_ID=$core" \
+        -e "RUN_USER_UID_GID=$run_uid" \
         -e CONTAINER_TIMEZONE=Europe/Athens \
         -e "DOMSERVER_BASEURL=http://$DOMSERVER_IP:$DOMSERVER_PORT/" \
         -e "JUDGEDAEMON_PASSWORD=$JUDGEDAEMON_PASSWORD" \

@@ -82,8 +82,18 @@ RUN set -eux; \
     rm -rf /chroot/domjudge/opt/kotlinc /chroot/domjudge/usr/lib/kotlinc; \
     mkdir -p /chroot/domjudge/usr/lib /chroot/domjudge/usr/local/bin /usr/local/bin; \
     unzip -q /tmp/kotlin-compiler.zip -d /chroot/domjudge/usr/lib; \
+    mkdir -p /chroot/domjudge/usr/lib/kotlinc/lib/jansi; \
+    unzip -j -o -q /chroot/domjudge/usr/lib/kotlinc/lib/kotlin-compiler.jar \
+        '*/native/Linux/x86_64/libjansi.so' \
+        -d /chroot/domjudge/usr/lib/kotlinc/lib/jansi; \
+    test -f /chroot/domjudge/usr/lib/kotlinc/lib/jansi/libjansi.so; \
+    grep -q 'KOTLIN_HOME="$(findKotlinHome)"' /chroot/domjudge/usr/lib/kotlinc/bin/kotlinc; \
+    sed -i '/^KOTLIN_HOME="$(findKotlinHome)"$/a java_args=("-Dlibrary.jansi.path=${KOTLIN_HOME}/lib/jansi")' \
+        /chroot/domjudge/usr/lib/kotlinc/bin/kotlinc; \
+    sed -i 's/^declare -a java_args$/# java_args initialized with library.jansi.path above/' \
+        /chroot/domjudge/usr/lib/kotlinc/bin/kotlinc; \
     chmod -R a+rX /chroot/domjudge/usr/lib/kotlinc; \
-    chmod 755 /chroot/domjudge/usr/lib/kotlinc/bin/*; \
+    chmod 755 /chroot/domjudge/usr/lib/kotlinc/bin/* /chroot/domjudge/usr/lib/kotlinc/lib/jansi/libjansi.so; \
     for bin in kotlinc kotlin kotlinc-jvm kapt; do \
         ln -sf "/usr/lib/kotlinc/bin/${bin}" "/chroot/domjudge/usr/local/bin/${bin}"; \
         ln -sf "/chroot/domjudge/usr/lib/kotlinc/bin/${bin}" "/usr/local/bin/${bin}"; \
