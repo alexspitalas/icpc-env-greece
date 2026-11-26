@@ -147,50 +147,101 @@
   register: docker_prune_result
   changed_when: "'deleted:' in docker_prune_result.stdout"
 
-- name: Smoke-test all compilers (C/C++ 14, Java 21, Python 3, PyPy 3, Kotlin {{ judgehost_kotlin_version }}) inside custom judgehost chroot
+- name: Smoke-test all compilers (C/C++ 14, Java 21, Python 3, PyPy 3, Kotlin {{ judgehost_kotlin_version }}) in outer container and real DOMjudge chroot
   shell: |
     docker run --rm -i --privileged \
       -e KOTLIN_VERSION="{{ judgehost_kotlin_version }}" \
       --entrypoint /bin/bash \
       "{{ judgehost_custom_image }}" <<'SMOKE_EOF'
     set -euo pipefail
-    trap 'umount /chroot/domjudge/proc 2>/dev/null || true; rm -rf /chroot/domjudge/tmp/smoke' EXIT
-    mount -t proc proc /chroot/domjudge/proc
-    mkdir -p /chroot/domjudge/tmp/smoke
-    chmod 1777 /chroot/domjudge/tmp /chroot/domjudge/tmp/smoke
 
-    GCC_VER="$(chroot /chroot/domjudge gcc --version | sed -n '1p')"
-    GPP_VER="$(chroot /chroot/domjudge g++ --version | sed -n '1p')"
-    JAVA_VER="$(chroot /chroot/domjudge java -version 2>&1)"
-    PY3_VER="$(chroot /chroot/domjudge python3 --version 2>&1)"
-    PYPY3_VER="$(chroot /chroot/domjudge pypy3 --version 2>&1)"
-    KOTLIN_VER="$(chroot /chroot/domjudge kotlinc -version 2>&1)"
-    echo "Judgehost chroot toolchains: $GCC_VER | $GPP_VER | $PY3_VER | $KOTLIN_VER"
+    CHROOT_SCRIPT="/opt/domjudge/judgehost/lib/judge/chroot-startstop.sh"
+    WORKDIR="/tmp/smoke-judging"
+    OUTER_DIR="/tmp/smoke-outer"
+    CHROOT_STARTED=0
+
+    cleanup() {
+      if [ "$CHROOT_STARTED" -eq 1 ]; then
+        if (cd "$WORKDIR" && "$CHROOT_SCRIPT" stop); then
+          rm -rf "$WORKDIR" || true
+        fi
+      else
+        rm -rf "$WORKDIR" 2>/dev/null || true
+      fi
+      rm -rf "$OUTER_DIR" || true
+    }
+    trap cleanup EXIT
+
+    # 1. Verify outer container toolchains (used for jury executables/validators and docker exec inspection)
+    OUTER_GCC_VER="$(gcc --version | sed -n '1p')"
+    OUTER_GPP_VER="$(g++ --version | sed -n '1p')"
+    OUTER_JAVA_VER="$(java -version 2>&1)"
+    OUTER_PY3_VER="$(python3 --version 2>&1)"
+    OUTER_KOTLINC_VER="$(kotlinc -version 2>&1)"
+    OUTER_KOTLIN_VER="$(kotlin -version 2>&1)"
+    echo "Outer container toolchains: $OUTER_GCC_VER | $OUTER_GPP_VER | $OUTER_PY3_VER | $OUTER_KOTLINC_VER"
+    [[ "$OUTER_GCC_VER" == *"14."* ]]
+    [[ "$OUTER_GPP_VER" == *"14."* ]]
+    [[ "$OUTER_JAVA_VER" == *"21."* ]]
+    [[ -n "$OUTER_PY3_VER" ]]
+    [[ "$OUTER_KOTLINC_VER" == *"${KOTLIN_VERSION}"* ]]
+    [[ "$OUTER_KOTLIN_VER" == *"${KOTLIN_VERSION}"* ]]
+
+    mkdir -p "$OUTER_DIR"
+    cat <<'SRC_EOF' > "$OUTER_DIR/validator.cpp"
+    #include <iostream>
+    int main() { std::cout << "outer-cpp-14\n"; return 0; }
+    SRC_EOF
+    g++ -Wall -O2 -std=gnu++20 "$OUTER_DIR/validator.cpp" -o "$OUTER_DIR/validator"
+    test "$("$OUTER_DIR/validator")" = "outer-cpp-14"
+
+    # 2. Verify real DOMjudge per-judging chroot layout via chroot-startstop.sh
+    #    (only bind-mounts etc/usr/lib/bin/lib64 + proc + dev — NO /opt and NO /tmp)
+    "$CHROOT_SCRIPT" check
+    mkdir -p "$WORKDIR/compile"
+    chmod 0755 "$WORKDIR"
+    chmod 1777 "$WORKDIR/compile"
+    (cd "$WORKDIR" && "$CHROOT_SCRIPT" start)
+    CHROOT_STARTED=1
+
+    # Confirm /opt is not mounted inside the per-judging chroot (guards against /opt installs)
+    test ! -e "$WORKDIR/opt"
+
+    CHROOT_ENV=(/usr/bin/env -i PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin HOME=/nonexistent)
+    GCC_VER="$(chroot --userspec=65534:65534 "$WORKDIR" "${CHROOT_ENV[@]}" gcc --version | sed -n '1p')"
+    GPP_VER="$(chroot --userspec=65534:65534 "$WORKDIR" "${CHROOT_ENV[@]}" g++ --version | sed -n '1p')"
+    JAVA_VER="$(chroot --userspec=65534:65534 "$WORKDIR" "${CHROOT_ENV[@]}" java -version 2>&1)"
+    PY3_VER="$(chroot --userspec=65534:65534 "$WORKDIR" "${CHROOT_ENV[@]}" python3 --version 2>&1)"
+    PYPY3_VER="$(chroot --userspec=65534:65534 "$WORKDIR" "${CHROOT_ENV[@]}" pypy3 --version 2>&1)"
+    KOTLINC_VER="$(chroot --userspec=65534:65534 "$WORKDIR" "${CHROOT_ENV[@]}" kotlinc -version 2>&1)"
+    KOTLIN_VER="$(chroot --userspec=65534:65534 "$WORKDIR" "${CHROOT_ENV[@]}" kotlin -version 2>&1)"
+    echo "Judgehost chroot toolchains: $GCC_VER | $GPP_VER | $PY3_VER | $KOTLINC_VER"
     [[ "$GCC_VER" == *"14."* ]]
     [[ "$GPP_VER" == *"14."* ]]
     [[ "$JAVA_VER" == *"21."* ]]
     [[ -n "$PY3_VER" ]]
     [[ -n "$PYPY3_VER" ]]
+    [[ "$KOTLINC_VER" == *"${KOTLIN_VERSION}"* ]]
     [[ "$KOTLIN_VER" == *"${KOTLIN_VERSION}"* ]]
 
-    cat <<'SRC_EOF' > /chroot/domjudge/tmp/smoke/test.c
+    cat <<'SRC_EOF' > "$WORKDIR/compile/test.c"
     #include <stdio.h>
     int main(void) { puts("hello-c-14"); return 0; }
     SRC_EOF
-    cat <<'SRC_EOF' > /chroot/domjudge/tmp/smoke/test.cpp
+    cat <<'SRC_EOF' > "$WORKDIR/compile/test.cpp"
     #include <iostream>
     int main() { std::cout << "hello-cpp-14\n"; return 0; }
     SRC_EOF
-    cat <<'SRC_EOF' > /chroot/domjudge/tmp/smoke/MainJava.java
+    cat <<'SRC_EOF' > "$WORKDIR/compile/MainJava.java"
     public class MainJava { public static void main(String[] args) { System.out.println("hello-java-21"); } }
     SRC_EOF
-    printf 'fun main() { println("hello-kotlin-%s") }\n' "${KOTLIN_VERSION}" > /chroot/domjudge/tmp/smoke/Main.kt
-    chmod 644 /chroot/domjudge/tmp/smoke/test.c /chroot/domjudge/tmp/smoke/test.cpp /chroot/domjudge/tmp/smoke/MainJava.java /chroot/domjudge/tmp/smoke/Main.kt
+    printf 'fun main() { println("hello-kotlin-%s") }\n' "${KOTLIN_VERSION}" > "$WORKDIR/compile/Main.kt"
+    chmod 644 "$WORKDIR/compile/test.c" "$WORKDIR/compile/test.cpp" "$WORKDIR/compile/MainJava.java" "$WORKDIR/compile/Main.kt"
 
-    cat <<'RUN_EOF' > /chroot/domjudge/tmp/smoke/run_test.sh
+    cat <<'RUN_EOF' > "$WORKDIR/compile/run_test.sh"
     #!/bin/bash
     set -euo pipefail
-    cd /tmp/smoke
+    cd /compile
     gcc -x c -Wall -O2 -static -pipe -o test_c test.c -lm
     test "$(./test_c)" = "hello-c-14"
     g++ -x c++ -Wall -O2 -static -pipe -o test_cpp test.cpp
@@ -206,9 +257,9 @@
     OUT=$("${KOTLIN_DIR}/kotlin" -Dfile.encoding=UTF-8 -J-XX:+UseSerialGC -J-Xss65536k -J-Xms128m -J-Xmx384m MainKt)
     test "$OUT" = "hello-kotlin-$1"
     RUN_EOF
-    chmod 755 /chroot/domjudge/tmp/smoke/run_test.sh
+    chmod 755 "$WORKDIR/compile/run_test.sh"
 
-    chroot /chroot/domjudge su -s /bin/bash nobody -c "HOME=/nonexistent /tmp/smoke/run_test.sh '${KOTLIN_VERSION}'"
+    chroot --userspec=65534:65534 "$WORKDIR" "${CHROOT_ENV[@]}" /compile/run_test.sh "${KOTLIN_VERSION}"
     SMOKE_EOF
   args:
     executable: /bin/bash

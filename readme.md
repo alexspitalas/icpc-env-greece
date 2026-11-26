@@ -2,12 +2,12 @@
 This branch builds the dedicated **DOMjudge 9.0.0 judgehost** Linux image for the [ICPC Greece / SEERC Regional](https://algoforum.upatras.gr/), based on the [ICPC Southeast Regional](https://github.com/icpc-environment/icpc-env) image tools.
 
 ## Key Features
-* **Custom DOMjudge 9.0.0 judgehost Docker image (`icpc/judgehost:9.0.0`)** built on top of `domjudge/judgehost:9.0.0` with toolchains matching the contestant image inside `/chroot/domjudge`:
-  * **C / C++:** GCC 14 / G++ 14 (default via `update-alternatives`)
+* **Custom DOMjudge 9.0.0 judgehost Docker image (`icpc/judgehost:9.0.0`)** built on top of `domjudge/judgehost:9.0.0` with toolchains matching the contestant image in both `/chroot/domjudge` and the outer container:
+  * **C / C++:** GCC 14 / G++ 14 (default via `update-alternatives` in both outer container and chroot)
   * **Java:** OpenJDK 21
   * **Python:** Python 3.12 & PyPy 3
-  * **Kotlin:** Kotlin `2.2.20` (`/opt/kotlinc` + `/usr/local/bin/{kotlinc,kotlin,kotlinc-jvm,kapt}`)
-  * Verified during image build with an end-to-end unprivileged (`nobody`) compile & run smoke test across all 5 languages
+  * **Kotlin:** Kotlin `2.2.20` (`/chroot/domjudge/usr/lib/kotlinc` + `/usr/local/bin/{kotlinc,kotlin,kotlinc-jvm,kapt}` inside `/usr` so DOMjudge's `chroot-startstop.sh` mounts it, and symlinked into outer `/usr/local/bin`)
+  * Verified during image build with an end-to-end unprivileged compile & run smoke test using DOMjudge's actual `chroot-startstop.sh` mount layout plus outer-container checks
 * **Host compilers & tooling:** GCC/G++ 14, OpenJDK 21, Python 3 / PyPy 3, Kotlin `2.2.20`, VS Code, `vim`, `gedit`, Docker CE (with 50 MB × 3 json-file log rotation)
 * **Deterministic judging & stability tuning:**
   * cgroup v2 enabled (required by DOMjudge 9.0+)
