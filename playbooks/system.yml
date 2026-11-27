@@ -39,14 +39,16 @@
     group: root
     mode: '0644'
 
-- name: set kernel command line parameters for target storage medium
+# Keep USB boot-stability params (disable UAS, USB autosuspend, and USB 3.0 LPM) on BOTH
+# "usb" and "ssd" builds: they only affect USB devices (zero impact on internal SATA/NVMe
+# SSDs) and allow an "ssd" image (with default block_usb_storage_kernel: false) to boot
+# reliably from a USB flash drive or USB enclosure without UAS/LPM hangs in initramfs.
+- name: set kernel command line parameters for storage and gpu stability
   set_fact:
     icpc_grub_cmdline: >-
-      {{
-        'biosdevname=0 consoleblank=0 net.ifnames=0 '
-        ~ ('usbcore.autosuspend=-1 usbcore.lpm_disable=1 modprobe.blacklist=uas ' if sys_install_target == 'usb' else '')
-        ~ 'intel_iommu=off pcie_aspm=off nouveau.noaccel=1 i915.enable_psr=0'
-      }}
+      biosdevname=0 consoleblank=0 net.ifnames=0
+      usbcore.autosuspend=-1 usbcore.lpm_disable=1 modprobe.blacklist=uas
+      intel_iommu=off pcie_aspm=off nouveau.noaccel=1 i915.enable_psr=0
 
 - name: disable console blanking and configure storage and gpu stability parameters
   lineinfile:
@@ -119,19 +121,19 @@
     path: /etc/sysctl.d/99-usb-flush.conf
     state: absent
 
+# Keep UAS blacklisted on both "usb" and "ssd" builds so USB drives fall back to the
+# stable usb-storage (BOT) driver if an "ssd" image is booted from USB (no effect on
+# internal SATA/NVMe SSDs).
 - name: blacklist uas kernel module to enforce stable usb-storage mode
-  when: sys_install_target == 'usb'
   copy:
     dest: /etc/modprobe.d/blacklist-uas.conf
+    owner: root
+    group: root
+    mode: '0644'
     content: |
       # Force standard usb-storage BOT driver to prevent UAS controller hangs
       blacklist uas
-
-- name: remove uas kernel module blacklist when installed on ssd
-  when: sys_install_target == 'ssd'
-  file:
-    path: /etc/modprobe.d/blacklist-uas.conf
-    state: absent
+  notify: update initramfs
 
 # Optional extra-strict kernel-level block of USB mass-storage drives (flash drives /
 # external HDDs). Contestants are already prevented from mounting USB drives via Polkit

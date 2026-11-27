@@ -26,11 +26,14 @@ icpcadmin_ssh_keys: []
 #           drive, keeps VS Code caches/logs in RAM and caps the C/C++ IntelliSense
 #           cache at 512MB).
 #   "ssd" : Installed directly on the PCs' internal SATA/NVMe SSD. Removes USB-flash
-#           throttling/workarounds (allows UAS, removes dirty-buffer writeback caps,
-#           drops usbcore LPM/autosuspend kernel params, disables warm-fs-cache boot
-#           preloading, enables weekly fstrim.timer, and persists journald logs with
-#           a 100M cap). Note: pass `--no-usb` to ./create_baseimg.sh as well if you
-#           do not need the 192MB FAT32 ICPC transfer partition.
+#           throttling/workarounds (removes dirty-buffer writeback caps, disables
+#           warm-fs-cache boot preloading, enables weekly fstrim.timer, persists journald
+#           logs with a 100M cap, re-enables rsyslog, and keeps VS Code caches on disk).
+#           USB boot-stability kernel params (modprobe.blacklist=uas, usbcore LPM/autosuspend
+#           off) are kept so the "ssd" image can still be booted directly from a USB drive
+#           when block_usb_storage_kernel is false (zero impact on internal SATA/NVMe SSDs).
+#           Note: pass `--no-usb` to ./create_baseimg.sh as well if you do not need the
+#           192MB FAT32 ICPC transfer partition.
 install_target: "usb"
 
 # Optional extra-strict kernel-level block of USB mass-storage modules (usb-storage / uas).
