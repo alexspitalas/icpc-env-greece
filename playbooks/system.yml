@@ -83,6 +83,7 @@
       cups.socket \
       cups-browsed.service \
       power-profiles-daemon.service \
+      thermald.service \
       warm-fs-cache.service
     do
       if systemctl list-unit-files "$unit" --no-legend 2>/dev/null | grep -q .; then
